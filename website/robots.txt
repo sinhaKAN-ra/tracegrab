@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# AI agents: a structured profile of this tool for LLM discovery
+# https://tracegrab.dev/llms.txt

@@ -1,0 +1,43 @@
+# Tracegrab
+
+> Tracegrab is an open-source (MIT) runtime behavioral-verification tool for API code. It drives an endpoint with a real sequence of requests, sets debugger breakpoints, traces the actual data flow through every layer (controller → service → DB), and returns a diagnosis — not raw stack frames. It is MCP-native: an AI coding agent can drive the entire investigation through 31 MCP tools, with or without an IDE open.
+
+Tracegrab answers one question: **did this code behave correctly at runtime, what changed, and what evidence proves it?** It is built for the era of AI-generated code, where the hard problem is not writing code but verifying that a change still behaves. It ships as a VS Code / Cursor / Windsurf extension plus a standalone MCP server and a zero-dependency headless CLI.
+
+## What it does
+
+- **Call Map**: every method rendered as a box, nested by caller, with the data crossing each boundary and the return path back.
+- **Auto-diagnosis**: detects N+1 queries, thrown exceptions, values silently cleared, DB fan-out, and heap growth — each ranked with evidence and a suggested fix.
+- **Behavioral verdict**: FAILING / PROBLEM FOUND / SUSPECT / LOOKS OK, surfaced before raw data.
+- **Prove a change**: save a baseline run, compare a later run (REGRESSION / CHANGED / EQUIVALENT), and generate + verify a behavior contract. The same zero-dependency engine runs in the IDE panel, via an agent, and in CI — producing identical verdicts.
+- **Live edits**: change a variable mid-flight to force a branch, then read it back, without touching source.
+
+## Agentic / MCP capabilities
+
+Tracegrab exposes 31 tools over an MCP stdio server (`mcp/flow-mcp.mjs`), so any MCP client (Cursor, Claude, Kiro, etc.) can operate it autonomously:
+
+- **One-shot**: `auto_debug` sets breakpoints, drives the calls, builds the Call Map, runs the detectors, and returns a verdict + findings in a single call.
+- **Live session control**: `start_debug_session`, `get_pause_state`, `debug_step`, `debug_continue`, `debug_set_variable` — a read→decide→mutate→step loop an agent can run programmatically.
+- **Headless, no IDE**: `start_headless_session` / `collect_trace_headless` hold a live debug session with no editor open — the same steer loop runs in CI or a pure-agent environment. Node is always supported; Python when `debugpy` is installed in the target environment.
+- **Prove behaviour**: `save_trace`, `compare_traces`, `create_behavior_contract`, `verify_behavior_contract`.
+- **Read the runtime**: `get_call_map`, `analyze_state`, `evaluate_expression`, `get_memory_timeline`, `get_variable_values`, `list_variable_names`, `export_mermaid`.
+- **Self-describing & safe**: `get_capabilities` and `get_instructions` let an agent probe what's possible before committing to a drive path; `get_audit_log` records every live edit. Secret redaction and propose-then-confirm on live edits are on by default.
+
+## When an AI agent should use Tracegrab
+
+Reach for it when a task involves an API or handler whose runtime behavior must be seen: a ticket or bug report, "why is endpoint X returning Y", "trace / reproduce / debug this flow", "set breakpoints", "verify this handler still behaves after my change", or gating an AI-made change on its real runtime behavior before review or merge.
+
+## Links
+
+- Website: https://tracegrab.dev
+- Source (GitHub): https://github.com/sinhaKAN-ra/tracegrab
+- License: MIT
+
+## Facts
+
+- Name: Tracegrab
+- Category: runtime behavioral verification / API flow debugger / MCP server for AI agents
+- License: MIT (open source)
+- Interfaces: VS Code / Cursor / Windsurf extension; MCP stdio server; zero-dependency headless CLI
+- Languages traced: Node.js (always), Python (with debugpy)
+- MCP tools: 31

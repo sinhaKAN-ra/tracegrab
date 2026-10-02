@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Tracegrab — prove AI-changed code behaves correctly at runtime</title>
 <meta name="description" content="Drive an API with a real request, watch data flow through every layer, and get a diagnosis — exceptions, N+1 queries, silent state loss, memory growth. Built to be driven by AI agents over MCP." />
+<link rel="canonical" href="https://tracegrab.dev/" />
+<link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt" />
+<meta property="og:title" content="Tracegrab — prove AI-changed code behaves correctly at runtime" />
+<meta property="og:description" content="MCP-native runtime behavioral verification. 31 tools let an AI agent drive an API, trace the real data flow, and prove what changed." />
+<meta property="og:url" content="https://tracegrab.dev/" />
+<meta property="og:type" content="website" />
 <style>
   :root{
     --bg:#0b0f1e; --panel:#111726; --line:rgba(255,255,255,0.08);
@@ -95,7 +101,7 @@ callPath:<br>
     <div class="grid">
       <div class="card"><h3>Call Map</h3><p>Every method as a box, nested by who called whom, with the data crossing each boundary and the return path back.</p></div>
       <div class="card"><h3>Auto-diagnosis</h3><p>N+1 queries, thrown exceptions, values silently cleared, DB fan-out, heap growth — ranked with evidence and a suggestion.</p></div>
-      <div class="card"><h3>Agent-native (MCP)</h3><p>19 tools. One call, <code>auto_debug</code>, runs the whole investigation and returns conclusions.</p></div>
+      <div class="card"><h3>Agent-native (MCP)</h3><p><strong>31 MCP tools</strong> over stdio. One call — <code>auto_debug</code> — runs the whole investigation and returns a verdict, or drive each step: start a session, set breakpoints, read a pause, mutate a variable, step, continue.</p></div>
       <div class="card"><h3>Safe by default</h3><p>Secret redaction, least-privilege reads, propose-then-confirm on every live edit, an audit trail, fail-closed mocking.</p></div>
       <div class="card"><h3>No JSON needed</h3><p>Set a breakpoint in the gutter, hit the endpoint from Postman/curl — captured identically, tagged EXT.</p></div>
       <div class="card"><h3>Live edits</h3><p>Change a variable mid-flight to force a branch, then read it back — without touching source.</p></div>
@@ -157,14 +163,23 @@ code --install-extension tracegrab-*.vsix</pre>
 
 <section id="agents">
   <div class="wrap">
-    <h2>Drive it with an AI agent</h2>
-    <p class="lede">Register the MCP server once; the agent discovers the tools and the “when to use it”.</p>
-    <pre>{ "mcpServers": { "flow-debugger": {
+    <h2>Built to be driven by AI agents</h2>
+    <p class="lede">Tracegrab is MCP-native: it ships a server exposing <strong>31 tools</strong> so an AI coding agent (Cursor, Claude, Kiro, any MCP client) can set breakpoints, run a flow, read the live runtime, and decide what changed — without a human in the loop.</p>
+    <pre>{ "mcpServers": { "tracegrab": {
   "command": "node",
   "args": ["/ABS/PATH/tracegrab/mcp/flow-mcp.mjs"],
   "env": { "FLOW_WORKSPACE": "/ABS/PATH/to/target/repo" }
 } } }</pre>
-    <p style="color:var(--muted);font-size:13.5px">Then the agent calls <code>auto_debug({ scenario })</code> → call map + diagnosis + verdict. Full guide: <code>docs/AGENT_AUTOMATION.md</code>.</p>
+
+    <div class="grid" style="margin-top:24px">
+      <div class="card"><h3>One-shot investigation</h3><p><code>auto_debug({ scenario })</code> sets the breakpoints, drives the calls, builds the Call Map, runs the detectors, and returns a verdict + ranked findings in a single call.</p></div>
+      <div class="card"><h3>Live session control</h3><p><code>start_debug_session</code>, <code>get_pause_state</code>, <code>debug_step</code>, <code>debug_continue</code>, <code>debug_set_variable</code> — the agent reads a pause, decides, mutates a variable to force a branch, and steps on. Read→decide→act, programmatically.</p></div>
+      <div class="card"><h3>Headless — no IDE</h3><p><code>start_headless_session</code> / <code>collect_trace_headless</code> hold a live debug session with <strong>no VS Code open</strong> — the same steer loop runs in CI or a pure-agent environment. Node always; Python when <code>debugpy</code> is present.</p></div>
+      <div class="card"><h3>Prove behaviour changed</h3><p><code>save_trace</code> a baseline, <code>compare_traces</code> a later run (REGRESSION / CHANGED / EQUIVALENT), and <code>create_behavior_contract</code> + <code>verify_behavior_contract</code> to gate the change — the same engine the CI runner uses.</p></div>
+      <div class="card"><h3>Read the runtime</h3><p><code>get_call_map</code>, <code>analyze_state</code>, <code>evaluate_expression</code>, <code>get_memory_timeline</code>, <code>get_variable_values</code>, <code>export_mermaid</code> — structured runtime truth the agent can reason over, not a screenshot.</p></div>
+      <div class="card"><h3>Self-describing &amp; safe</h3><p><code>get_capabilities</code> / <code>get_instructions</code> let an agent probe what's possible before committing to a path; <code>get_audit_log</code> records every live edit. Secret redaction and propose-then-confirm are on by default.</p></div>
+    </div>
+    <p style="color:var(--muted);font-size:13.5px;margin-top:18px">The agent reads a bundled <code>AGENTS.md</code> that tells it <em>when</em> to reach for the tool (a ticket, a bug report, "why does endpoint X do Y") and how to turn it into breakpoints + a run. Full guide: <code>docs/AGENT_AUTOMATION.md</code>.</p>
   </div>
 </section>
 
