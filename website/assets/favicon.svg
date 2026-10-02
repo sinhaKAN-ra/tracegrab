@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" fill="none" role="img" aria-label="Tracegrab favicon">
+  <rect x="6" y="6" width="84" height="84" rx="20" fill="#1b6fe0"/>
+  <!-- simplified for legibility at 16px: larger nodes, bolder check, no faded line -->
+  <circle cx="30" cy="30" r="5" fill="#bfe0ff"/>
+  <circle cx="48" cy="30" r="5" fill="#bfe0ff"/>
+  <circle cx="66" cy="30" r="5" fill="#bfe0ff" fill-opacity="0.5"/>
+  <path d="M30 52 L44 66 L70 36" stroke="#2fd47a" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

@@ -11,10 +11,17 @@
 <meta property="og:description" content="MCP-native runtime behavioral verification. 31 tools let an AI agent drive an API, trace the real data flow, and prove what changed." />
 <meta property="og:url" content="https://tracegrab.dev/" />
 <meta property="og:type" content="website" />
+<meta property="og:image" content="https://tracegrab.dev/assets/og-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+<link rel="apple-touch-icon" href="/assets/icon.svg" />
 <style>
   :root{
-    --bg:#0b0f1e; --panel:#111726; --line:rgba(255,255,255,0.08);
-    --text:#e2e8f0; --muted:#94a3b8; --accent:#818cf8; --accent2:#34d399;
+    --bg:#0a1120; --panel:#0f1a2e; --line:rgba(191,224,255,0.10);
+    --text:#e8eefb; --muted:#8ba1c4;
+    --accent:#2f86f0; --accent-ink:#bfe0ff; --accent2:#2fd47a;
+    --brand-blue:#1b6fe0; --node:#bfe0ff;
     --amber:#fbbf24; --red:#f87171; --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
   }
   *{box-sizing:border-box}
@@ -22,7 +29,7 @@
   a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
   .wrap{max-width:960px;margin:0 auto;padding:0 20px}
   code{font-family:var(--mono);background:rgba(255,255,255,0.07);border-radius:4px;padding:1px 6px;font-size:.9em}
-  pre{background:#0b0f1e;border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6}
+  pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6}
 
   header{text-align:center;padding:72px 0 40px;border-bottom:1px solid var(--line)}
   .badge{display:inline-block;font-size:11px;color:var(--accent2);background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.35);border-radius:20px;padding:3px 12px;margin-bottom:20px}
@@ -30,8 +37,26 @@
   .tag{font-size:18px;color:var(--muted);max-width:680px;margin:0 auto 28px}
   .cta{display:inline-flex;gap:10px;flex-wrap:wrap;justify-content:center}
   .btn{display:inline-block;border-radius:8px;padding:10px 20px;font-weight:600;font-size:14px}
-  .btn.primary{background:var(--accent);color:#0b0f1e} .btn.primary:hover{text-decoration:none;filter:brightness(1.08)}
-  .btn.ghost{border:1px solid var(--line);color:var(--text)} .btn.ghost:hover{text-decoration:none;background:rgba(255,255,255,.05)}
+  .btn.primary{background:var(--accent);color:#07101f} .btn.primary:hover{text-decoration:none;filter:brightness(1.08)}
+  .btn.ghost{border:1px solid var(--line);color:var(--text)} .btn.ghost:hover{text-decoration:none;background:rgba(191,224,255,.06)}
+
+  /* sticky brand nav */
+  .nav{position:sticky;top:0;z-index:50;background:rgba(10,17,32,.82);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  .nav .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
+  .brand{display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:17px;color:var(--text);letter-spacing:-.3px}
+  .brand:hover{text-decoration:none}
+  .brand svg,.brand img{width:30px;height:30px;display:block}
+  .brand .accent{color:var(--accent2)}
+  .navlinks{display:flex;align-items:center;gap:22px;font-size:14px}
+  .navlinks a{color:var(--muted)} .navlinks a:hover{color:var(--text);text-decoration:none}
+  .navlinks .btn{padding:7px 14px;font-size:13px}
+  @media(max-width:640px){.navlinks a:not(.btn){display:none}}
+
+  /* hero: logo-forward */
+  header{text-align:center;padding:64px 0 48px;border-bottom:1px solid var(--line);
+    background:radial-gradient(900px 380px at 50% -8%, rgba(27,111,224,.18), transparent 70%)}
+  .hero-mark{width:84px;height:84px;margin:0 auto 22px;display:block;filter:drop-shadow(0 8px 28px rgba(27,111,224,.4))}
+  .accent2-text{color:var(--accent2)}
 
   section{padding:52px 0;border-bottom:1px solid var(--line)}
   h2{font-size:26px;margin:0 0 8px} .lede{color:var(--muted);margin:0 0 28px}
@@ -39,7 +64,7 @@
   .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
   .card h3{margin:0 0 6px;font-size:16px} .card p{margin:0;color:var(--muted);font-size:13.5px}
   .k{color:var(--accent)} .n1{color:var(--amber)} .err{color:var(--red)} .ok{color:var(--accent2)}
-  .verdict{font-family:var(--mono);font-size:13px;background:#0b0f1e;border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+  .verdict{font-family:var(--mono);font-size:13px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
   .steps{counter-reset:s;list-style:none;padding:0;margin:0}
   .steps li{counter-increment:s;position:relative;padding:8px 0 8px 40px;color:var(--muted)}
   .steps li b{color:var(--text)}
@@ -60,8 +85,23 @@
 </style>
 </head>
 <body>
-<header>
+<nav class="nav">
   <div class="wrap">
+    <a class="brand" href="#top" aria-label="Tracegrab home">
+      <svg viewBox="0 0 96 96" fill="none" aria-hidden="true"><rect x="6" y="6" width="84" height="84" rx="20" fill="#1b6fe0"/><circle cx="30" cy="30" r="4.2" fill="#bfe0ff"/><circle cx="48" cy="30" r="4.2" fill="#bfe0ff"/><circle cx="66" cy="30" r="4.2" fill="#bfe0ff" fill-opacity=".5"/><path d="M30 30H48" stroke="#bfe0ff" stroke-width="3" stroke-linecap="round"/><path d="M48 30H66" stroke="#bfe0ff" stroke-width="3" stroke-linecap="round" stroke-opacity=".5"/><path d="M30 52 44 66 70 36" stroke="#2fd47a" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+      Trace<span class="accent">grab</span>
+    </a>
+    <div class="navlinks">
+      <a href="#what">Features</a>
+      <a href="#agents">For AI agents</a>
+      <a href="#start">Install</a>
+      <a class="btn primary" href="https://github.com/sinhaKAN-ra/tracegrab">GitHub</a>
+    </div>
+  </div>
+</nav>
+<header id="top">
+  <div class="wrap">
+    <svg class="hero-mark" viewBox="0 0 96 96" fill="none" role="img" aria-label="Tracegrab"><rect x="6" y="6" width="84" height="84" rx="20" fill="#1b6fe0"/><circle cx="30" cy="30" r="4.2" fill="#bfe0ff"/><circle cx="48" cy="30" r="4.2" fill="#bfe0ff"/><circle cx="66" cy="30" r="4.2" fill="#bfe0ff" fill-opacity=".5"/><path d="M30 30H48" stroke="#bfe0ff" stroke-width="3" stroke-linecap="round"/><path d="M48 30H66" stroke="#bfe0ff" stroke-width="3" stroke-linecap="round" stroke-opacity=".5"/><path d="M30 52 44 66 70 36" stroke="#2fd47a" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
     <span class="badge">open source · MIT · MCP-native</span>
     <h1>See how your API code <em>actually behaves</em>.</h1>
     <p class="tag">Drive an endpoint with a real request, watch data flow through every layer —
