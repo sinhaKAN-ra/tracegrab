@@ -1,0 +1,16 @@
+# Code owners — review is required on these paths before merge.
+# (Set the owner handle once the GitHub org/user is final.)
+
+# Default owner for everything.
+*                           @OWNER
+
+# The capability-flag mechanism and anything security-sensitive: owner review
+# always required. These are the seams the paid layer plugs into; changes here
+# must not leak configuration-as-data or weaken the boundary.
+/src/entitlements.ts        @OWNER
+/src/licenseService.ts      @OWNER
+/src/redact.ts              @OWNER
+/scripts/lint-boundaries.mjs @OWNER
+/.github/                   @OWNER
+/AGENTS.CONTRIB.md          @OWNER
+/CODEOWNERS                 @OWNER

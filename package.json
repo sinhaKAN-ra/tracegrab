@@ -1,0 +1,96 @@
+{
+  "name": "tracegrab",
+  "publisher": "TraceGrab-KaranSinha",
+  "displayName": "Tracegrab",
+  "description": "Prove AI-changed code still behaves correctly at runtime. Drive handlers with sequenced API calls, trace the real data flow, diff behavior against a baseline, and gate the change on it.",
+  "version": "0.0.1",
+  "icon": "media/brand/icon-128.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sinhaKAN-ra/tracegrab.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sinhaKAN-ra/tracegrab/issues"
+  },
+  "homepage": "https://tracegrab.dev",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Debuggers",
+    "Testing",
+    "Visualization"
+  ],
+  "keywords": [
+    "ai",
+    "verification",
+    "debugger",
+    "behavioral-testing",
+    "mcp",
+    "runtime"
+  ],
+  "activationEvents": [
+    "onCommand:tracegrab.start",
+    "onCommand:tracegrab.startDebugging",
+    "onCommand:tracegrab.useSession",
+    "onCommand:tracegrab.setBreakpoints",
+    "onCommand:tracegrab.runScenarioJson"
+  ],
+  "main": "./out/extension.js",
+  "bin": {
+    "tracegrab-mcp": "./mcp/flow-mcp.mjs"
+  },
+  "files": [
+    "mcp/",
+    "cli/",
+    "media/brand/",
+    "README.md",
+    "LICENSE"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "tracegrab.start",
+        "title": "Tracegrab: Start"
+      },
+      {
+        "command": "tracegrab.startDebugging",
+        "title": "Tracegrab: Start Debugging (launch + panel)"
+      },
+      {
+        "command": "tracegrab.useSession",
+        "title": "Tracegrab: Switch Driven Session"
+      },
+      {
+        "command": "tracegrab.setBreakpoints",
+        "title": "Tracegrab: Set Breakpoints (from scenario)"
+      },
+      {
+        "command": "tracegrab.runScenarioJson",
+        "title": "Tracegrab: Run Scenario JSON"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "npm run build:webview && npm run compile",
+    "build:webview": "npm --prefix webview-ui install && npm --prefix webview-ui run build",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint:boundaries": "node scripts/lint-boundaries.mjs",
+    "flow-run": "node cli/flow-run.mjs",
+    "demo": "npm run build:webview && node verify/make-demo.mjs --open",
+    "demo:shot": "npm run build:webview && node verify/make-demo.mjs --shot",
+    "test": "npm run lint:boundaries && npm run compile && node verify/host-logic.test.mjs && node verify/call-tree.test.mjs && node verify/safety.test.mjs && node verify/flowtrace.test.mjs && node verify/behavioral-diff.test.mjs && node verify/contracts.test.mjs && node verify/outcome.test.mjs && node verify/breakpoints.test.mjs && node verify/session-status.test.mjs && node cli/collector.test.mjs && node cli/collector-interactive.test.mjs && node cli/headless-session.test.mjs && node verify/headless-mcp.test.mjs",
+    "flow-verify": "node cli/flow-verify.mjs"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "^18.x",
+    "typescript": "^5.1.3"
+  }
+}

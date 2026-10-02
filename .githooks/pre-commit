@@ -1,0 +1,22 @@
+#!/bin/sh
+# Tracegrab pre-commit hook — enforces the open-core boundary locally.
+#
+# Shared via `git config core.hooksPath .githooks` (run scripts/install-hooks.sh
+# once after cloning). Blocks a commit that would leak the private strategy into
+# the public repo: a cross-boundary import, a populated feature->tier map, or a
+# roadmap codename. Same check CI runs — this just catches it before the push.
+#
+# Bypass in a genuine emergency with `git commit --no-verify` (discouraged).
+
+set -e
+
+echo "pre-commit: running lint:boundaries…"
+if ! node scripts/lint-boundaries.mjs; then
+  echo ""
+  echo "✗ pre-commit BLOCKED: boundary violation above."
+  echo "  Fix the leak, or (only if you are certain) bypass with: git commit --no-verify"
+  exit 1
+fi
+
+echo "pre-commit: boundaries clean ✓"
+exit 0

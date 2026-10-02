@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+webview-ui/node_modules/
+
+# Build output
+out/
+webview-ui/dist/
+*.vsix
+*.tsbuildinfo
+
+# Runtime debug artifacts — may contain captured variable values; NEVER commit
+.flow-debugger/
+docs/screenshots/index.html
+docs/screenshots/*.png
+
+# Licensing / entitlement (local, per-user)
+.flow-debugger/license.json
+
+# Editor / OS
+.DS_Store
+.vscode-test/
+*.log
+
+# Git worktrees (local experiments; never part of the tracked tree)
+.worktrees/
+
+# Agent / tool scratch (local task state, not source)
+.agents/
+.kiro/settings/
+
+# Env / secrets — defense in depth; nothing credential-bearing should be tracked
+.env
+.env.*
+*.pem
+*.key
+
+# Private org layer — must NEVER be committed into the public repo.
+# The org layer lives in the separate private `tracegrab-org` repository.
+/org/
+/tracegrab-org/
+*.license.private.json
+
+# Internal design/planning artifacts — live in the private tracegrab-org repo, never public.
+/docs/mockups/
+/docs/UX_PRODUCT_PLAN.md
+/docs/SCREENSHOTS.md

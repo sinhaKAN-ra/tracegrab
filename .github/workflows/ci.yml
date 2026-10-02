@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install (root)
+        run: npm install
+      - name: Boundary lint (public core stays self-contained + strategy-free)
+        run: npm run lint:boundaries
+      - name: Build (webview + host)
+        run: npm run build
+      - name: Webview lint
+        run: cd webview-ui && npx oxlint src
+      - name: Test
+        run: npm test

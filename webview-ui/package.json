@@ -1,0 +1,29 @@
+{
+  "name": "webview-ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "reactflow": "^11.11.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "oxlint": "^1.79.0",
+    "typescript": "~5.8.3",
+    "vite": "^6.4.3"
+  },
+  "overrides": {
+    "esbuild": "^0.25.0"
+  }
+}

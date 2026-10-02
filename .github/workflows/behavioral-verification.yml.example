@@ -1,0 +1,132 @@
+# Gate a PR on RUNTIME BEHAVIOUR, not just unit tests.
+#
+# This is the C5 wedge: the collector records a real trace with NO IDE (Node via
+# the built-in inspector, nothing to install; Python via debugpy, which must be
+# a normal dependency of the TARGET project, exactly like pytest). Everything
+# after `collect` — contract / verify / compare / report — is language-agnostic.
+
+name: behavioral-verification
+
+on:
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  # ---- Node target -----------------------------------------------------
+  verify-behaviour-node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4   # pin by SHA in production
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22          # Node 22+ ships the global WebSocket the collector needs
+      - name: Install
+        run: npm ci
+
+      - name: Record a trace with no IDE
+        run: |
+          node cli/flow-verify.mjs collect src/server.js \
+            --bp "src/controllers/orders.js:18,src/services/orders.js:42" \
+            --args "" --timeout 30000
+
+      - name: Verify the behavior contract
+        id: contract
+        run: |
+          node cli/flow-verify.mjs verify contracts/orders.yaml \
+            --fail-on exception,contract-violation,regression,new-n-plus-one \
+            --json > behaviour-node.json || echo "FAILED=1" >> "$GITHUB_ENV"
+          cat behaviour-node.json
+
+      - name: Compare against the committed baseline
+        if: always()
+        run: |
+          node cli/flow-verify.mjs compare \
+            baselines/orders.flowtrace.json candidate \
+            > behaviour-diff-node.md || echo "FAILED=1" >> "$GITHUB_ENV"
+          cat behaviour-diff-node.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: behavioural-evidence-node
+          path: behaviour-node.json behaviour-diff-node.md
+
+      - name: Fail the check on a behavioural regression
+        if: env.FAILED == '1'
+        run: |
+          echo "::error::Node service's runtime behaviour regressed — see the uploaded evidence."
+          exit 1
+
+  # ---- Python target -----------------------------------------------------
+  verify-behaviour-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: |
+          npm ci
+          pip install -r requirements.txt   # debugpy MUST be a target-project dependency, e.g.:
+          pip install debugpy                #   requirements-dev.txt: debugpy==1.8.21 (pin it)
+
+      - name: Confirm the collector can drive this target
+        run: node cli/flow-verify.mjs check --python "$(which python3)"
+
+      - name: Record a trace with no IDE
+        run: |
+          node cli/flow-verify.mjs collect app/main.py --lang python \
+            --python "$(which python3)" \
+            --bp "app/routes.py:24,app/services.py:57" --timeout 30000
+
+      - name: Verify the behavior contract
+        run: |
+          node cli/flow-verify.mjs verify contracts/orders-py.yaml \
+            --fail-on exception,contract-violation,regression \
+            --json > behaviour-python.json || echo "FAILED=1" >> "$GITHUB_ENV"
+          cat behaviour-python.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: behavioural-evidence-python
+          path: behaviour-python.json
+
+      - name: Fail the check on a behavioural regression
+        if: env.FAILED == '1'
+        run: |
+          echo "::error::Python service's runtime behaviour regressed — see the uploaded evidence."
+          exit 1
+
+  # ---- Post a combined comment on the PR --------------------------------
+  comment:
+    needs: [verify-behaviour-node, verify-behaviour-python]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: evidence
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            let body = '## Runtime behavioural verification\n\n';
+            const walk = (dir) => fs.existsSync(dir) ? fs.readdirSync(dir) : [];
+            for (const d of walk('evidence')) {
+              for (const f of walk(path.join('evidence', d))) {
+                if (f.endsWith('.md') || f.endsWith('.json')) {
+                  body += `### ${d}/${f}\n\n` + '```\n' +
+                    fs.readFileSync(path.join('evidence', d, f), 'utf8').slice(0, 15000) + '\n```\n\n';
+                }
+              }
+            }
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner, repo: context.repo.repo, body,
+            });
