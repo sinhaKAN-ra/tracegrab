@@ -63,7 +63,7 @@
       silently-lost state, memory growth. Not another stack trace an AI has to guess from.</p>
     <div class="cta">
       <a class="btn primary" href="#start">Get started</a>
-      <a class="btn ghost" href="https://github.com/">View on GitHub</a>
+      <a class="btn ghost" href="https://github.com/sinhaKAN-ra/tracegrab">View on GitHub</a>
       <a class="btn ghost" href="#agents">Drive it with an AI agent</a>
     </div>
   </div>
@@ -110,27 +110,27 @@ callPath:<br>
     <p class="gallery-note">Click any image for full size — captured from the real built webview.</p>
     <div class="gallery">
       <figure class="shot">
-        <a href="../docs/screenshots/callmap.png" target="_blank" rel="noopener"><img src="../docs/screenshots/callmap.png" alt="Run-centric workspace with verdict, findings, call map and inspector" loading="lazy"></a>
+        <a href="assets/callmap.png" target="_blank" rel="noopener"><img src="assets/callmap.png" alt="Run-centric workspace with verdict, findings, call map and inspector" loading="lazy"></a>
         <figcaption class="cap"><h3>Run-centric workspace</h3><p>Verdict strip, ranked findings, the nested Call Map, run history rail, and the live inspector — the debugger answer, not raw frames.</p><span class="tag">product</span></figcaption>
       </figure>
       <figure class="shot">
-        <a href="../docs/screenshots/phase4-prove.png" target="_blank" rel="noopener"><img src="../docs/screenshots/phase4-prove.png" alt="Prove tab showing a regression comparison and a failing contract" loading="lazy"></a>
+        <a href="assets/phase4-prove.png" target="_blank" rel="noopener"><img src="assets/phase4-prove.png" alt="Prove tab showing a regression comparison and a failing contract" loading="lazy"></a>
         <figcaption class="cap"><h3>Prove a change</h3><p>Save a baseline, compare a later run (REGRESSION / CHANGED / EQUIVALENT), and verify a behaviour contract — the same engine that gates CI.</p><span class="tag">product</span></figcaption>
       </figure>
       <figure class="shot">
-        <a href="../docs/screenshots/phase3-request.png" target="_blank" rel="noopener"><img src="../docs/screenshots/phase3-request.png" alt="Request editor with headers, body and extraction fields" loading="lazy"></a>
+        <a href="assets/phase3-request.png" target="_blank" rel="noopener"><img src="assets/phase3-request.png" alt="Request editor with headers, body and extraction fields" loading="lazy"></a>
         <figcaption class="cap"><h3>Request editor</h3><p>Every request field — method, URL, headers, body, and response-value extraction — with reorder and duplicate.</p><span class="tag">product</span></figcaption>
       </figure>
       <figure class="shot">
-        <a href="../docs/screenshots/phase2-onboarding.png" target="_blank" rel="noopener"><img src="../docs/screenshots/phase2-onboarding.png" alt="First-run onboarding offering three capture paths" loading="lazy"></a>
+        <a href="assets/phase2-onboarding.png" target="_blank" rel="noopener"><img src="assets/phase2-onboarding.png" alt="First-run onboarding offering three capture paths" loading="lazy"></a>
         <figcaption class="cap"><h3>Guided first run</h3><p>Three ways to start — observe a Postman request, run a scenario, or let an agent/CI collect — over an honest precondition checklist.</p><span class="tag">product</span></figcaption>
       </figure>
       <figure class="shot">
-        <a href="../docs/screenshots/phase2-medium.png" target="_blank" rel="noopener"><img src="../docs/screenshots/phase2-medium.png" alt="Workspace at a medium editor-panel width" loading="lazy"></a>
+        <a href="assets/phase2-medium.png" target="_blank" rel="noopener"><img src="assets/phase2-medium.png" alt="Workspace at a medium editor-panel width" loading="lazy"></a>
         <figcaption class="cap"><h3>Responsive · medium</h3><p>At a standard editor-panel width the run rail collapses and evidence chips stay in a scrollable strip.</p><span class="tag">product</span></figcaption>
       </figure>
       <figure class="shot">
-        <a href="../docs/screenshots/phase2-narrow.png" target="_blank" rel="noopener"><img src="../docs/screenshots/phase2-narrow.png" alt="Workspace stacked vertically at a narrow width" loading="lazy"></a>
+        <a href="assets/phase2-narrow.png" target="_blank" rel="noopener"><img src="assets/phase2-narrow.png" alt="Workspace stacked vertically at a narrow width" loading="lazy"></a>
         <figcaption class="cap"><h3>Responsive · narrow</h3><p>At a narrow width evidence and context stack vertically, with the runtime bar and actions kept sticky.</p><span class="tag">product</span></figcaption>
       </figure>
     </div>
@@ -141,12 +141,12 @@ callPath:<br>
   <div class="wrap">
     <h2>Get started</h2>
     <p class="lede">A VS Code / Cursor / Windsurf extension. Build, install, debug.</p>
-    <pre>git clone &lt;repo&gt; &amp;&amp; cd ai-debug-visualizer
+    <pre>git clone https://github.com/sinhaKAN-ra/tracegrab &amp;&amp; cd tracegrab
 npm install
 npm run build          # webview + host
 npm test               # host + call-tree + safety suites
-npx vsce package       # → ai-debug-visualizer-*.vsix
-code --install-extension ai-debug-visualizer-*.vsix</pre>
+npx vsce package       # → tracegrab-*.vsix
+code --install-extension tracegrab-*.vsix</pre>
     <ol class="steps">
       <li><b>F5</b> your API so it runs under the debugger.</li>
       <li>Run <b>“Tracegrab: Start”</b> and set breakpoints (gutter or panel).</li>
@@ -185,7 +185,7 @@ code --install-extension ai-debug-visualizer-*.vsix</pre>
 
 <footer>
   <div class="wrap">
-    MIT licensed · <a href="https://github.com/">GitHub</a> ·
+    MIT licensed · <a href="https://github.com/sinhaKAN-ra/tracegrab">GitHub</a> ·
     <a href="#start">Docs</a> · Built to be forked, extended, and driven by agents.
   </div>
 </footer>
