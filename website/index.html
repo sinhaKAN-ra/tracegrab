@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Tracegrab — prove AI-changed code behaves correctly at runtime</title>
-<meta name="description" content="Drive an API with a real request, watch data flow through every layer, and get a diagnosis — exceptions, N+1 queries, silent state loss, memory growth. Built to be driven by AI agents over MCP." />
+<title>tracegrab — see what your API actually did</title>
+<meta name="description" content="MCP-native runtime debugger. 31 tools let an AI agent set breakpoints, drive a scenario, and read a diagnosis — exceptions, N+1 queries, silent state loss, memory growth — straight from a live process." />
 <link rel="canonical" href="https://tracegrab.dev/" />
 <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt" />
-<meta property="og:title" content="Tracegrab — prove AI-changed code behaves correctly at runtime" />
-<meta property="og:description" content="MCP-native runtime behavioral verification. 31 tools let an AI agent drive an API, trace the real data flow, and prove what changed." />
+<meta property="og:title" content="tracegrab — see what your API actually did" />
+<meta property="og:description" content="MCP-native runtime behavioral verification. 31 tools. No IDE required." />
 <meta property="og:url" content="https://tracegrab.dev/" />
 <meta property="og:type" content="website" />
 <meta property="og:image" content="https://tracegrab.dev/assets/og-card.png" />
@@ -18,230 +18,312 @@
 <link rel="apple-touch-icon" href="/assets/icon.svg" />
 <style>
   :root{
-    --bg:#0a1120; --panel:#0f1a2e; --line:rgba(191,224,255,0.10);
-    --text:#e8eefb; --muted:#8ba1c4;
-    --accent:#2f86f0; --accent-ink:#bfe0ff; --accent2:#2fd47a;
-    --brand-blue:#1b6fe0; --node:#bfe0ff;
-    --amber:#fbbf24; --red:#f87171; --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+    --bg:#05070a; --bg2:#0a0e14; --panel:#0d1117; --line:#1c2733;
+    --text:#c9d6e3; --dim:#5c7085; --bright:#eef4fb;
+    --green:#3ddc84; --green-dim:#1f6b43;
+    --amber:#e3b341; --red:#f85149; --blue:#58a6ff;
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-  a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
-  .wrap{max-width:960px;margin:0 auto;padding:0 20px}
-  code{font-family:var(--mono);background:rgba(255,255,255,0.07);border-radius:4px;padding:1px 6px;font-size:.9em}
-  pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font:14px/1.7 var(--mono);
+    background-image:
+      radial-gradient(ellipse 900px 500px at 50% -10%, rgba(61,220,132,.07), transparent 60%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,.012) 0px, rgba(255,255,255,.012) 1px, transparent 1px, transparent 3px);
+  }
+  a{color:var(--blue);text-decoration:none} a:hover{text-decoration:underline}
+  .wrap{max-width:920px;margin:0 auto;padding:0 20px}
+  code,kbd{font-family:var(--mono)}
+  code{background:#0f1621;border:1px solid var(--line);border-radius:3px;padding:1px 6px;font-size:.92em;color:var(--green)}
+  kbd{background:#111a26;border:1px solid #2a3747;border-bottom-width:2px;border-radius:4px;padding:1px 7px;font-size:.85em;color:var(--bright)}
+  ::selection{background:rgba(61,220,132,.25)}
 
-  header{text-align:center;padding:72px 0 40px;border-bottom:1px solid var(--line)}
-  .badge{display:inline-block;font-size:11px;color:var(--accent2);background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.35);border-radius:20px;padding:3px 12px;margin-bottom:20px}
-  h1{font-size:38px;line-height:1.2;margin:0 0 14px;font-weight:700}
-  .tag{font-size:18px;color:var(--muted);max-width:680px;margin:0 auto 28px}
-  .cta{display:inline-flex;gap:10px;flex-wrap:wrap;justify-content:center}
-  .btn{display:inline-block;border-radius:8px;padding:10px 20px;font-weight:600;font-size:14px}
-  .btn.primary{background:var(--accent);color:#07101f} .btn.primary:hover{text-decoration:none;filter:brightness(1.08)}
-  .btn.ghost{border:1px solid var(--line);color:var(--text)} .btn.ghost:hover{text-decoration:none;background:rgba(191,224,255,.06)}
+  /* ---- top bar: terminal tab strip ---- */
+  .topbar{position:sticky;top:0;z-index:50;background:rgba(5,7,10,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:48px}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:600;color:var(--bright);font-size:14px}
+  .brand .dot3{display:flex;gap:5px}
+  .brand .dot3 span{width:9px;height:9px;border-radius:50%;display:block}
+  .brand .dot3 span:nth-child(1){background:#f85149}
+  .brand .dot3 span:nth-child(2){background:#e3b341}
+  .brand .dot3 span:nth-child(3){background:#3ddc84}
+  .brand .path{color:var(--dim);font-weight:400}
+  .topnav{display:flex;align-items:center;gap:20px;font-size:12.5px}
+  .topnav a{color:var(--dim)} .topnav a:hover{color:var(--green);text-decoration:none}
+  .topnav .star{color:var(--text);border:1px solid var(--line);border-radius:4px;padding:4px 10px;display:flex;align-items:center;gap:6px}
+  .topnav .star:hover{border-color:var(--green);color:var(--green);text-decoration:none}
+  @media(max-width:640px){.topnav a:not(.star){display:none}}
 
-  /* sticky brand nav */
-  .nav{position:sticky;top:0;z-index:50;background:rgba(10,17,32,.82);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-  .nav .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
-  .brand{display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:17px;color:var(--text);letter-spacing:-.3px}
-  .brand:hover{text-decoration:none}
-  .brand svg,.brand img{width:30px;height:30px;display:block}
-  .brand .accent{color:var(--accent2)}
-  .navlinks{display:flex;align-items:center;gap:22px;font-size:14px}
-  .navlinks a{color:var(--muted)} .navlinks a:hover{color:var(--text);text-decoration:none}
-  .navlinks .btn{padding:7px 14px;font-size:13px}
-  @media(max-width:640px){.navlinks a:not(.btn){display:none}}
+  /* ---- hero: terminal window ---- */
+  .hero{padding:56px 0 20px}
+  .kicker{color:var(--green);font-size:12.5px;margin:0 0 16px;display:flex;align-items:center;gap:10px}
+  .kicker::before{content:"";width:7px;height:7px;background:var(--green);border-radius:50%;box-shadow:0 0 8px var(--green);display:inline-block;animation:pulse 2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  h1{font-size:30px;line-height:1.35;margin:0 0 16px;font-weight:700;color:var(--bright);letter-spacing:-.3px}
+  h1 .cmt{color:var(--dim);font-weight:400}
+  .sub{color:var(--dim);font-size:14.5px;max-width:620px;margin:0 0 28px;line-height:1.75}
+  .sub b{color:var(--text);font-weight:600}
 
-  /* hero: logo-forward */
-  header{text-align:center;padding:64px 0 48px;border-bottom:1px solid var(--line);
-    background:radial-gradient(900px 380px at 50% -8%, rgba(27,111,224,.18), transparent 70%)}
-  .hero-mark{width:84px;height:84px;margin:0 auto 22px;display:block;filter:drop-shadow(0 8px 28px rgba(27,111,224,.4))}
-  .accent2-text{color:var(--accent2)}
+  .term{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:0 20px 60px -20px rgba(0,0,0,.6)}
+  .term .bar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#0a0e14;border-bottom:1px solid var(--line)}
+  .term .bar .d{width:11px;height:11px;border-radius:50%}
+  .term .bar .d.r{background:#f85149}.term .bar .d.y{background:#e3b341}.term .bar .d.g{background:#3ddc84}
+  .term .bar .title{margin-left:8px;color:var(--dim);font-size:12px}
+  .term pre{margin:0;padding:18px 20px;font-size:12.8px;line-height:1.85;overflow-x:auto;background:transparent;border:none}
+  .term .p{color:var(--dim)} .term .cmd{color:var(--bright)}
+  .term .c-k{color:var(--blue)} .term .c-g{color:var(--green)} .term .c-a{color:var(--amber)} .term .c-r{color:var(--red)} .term .c-d{color:var(--dim)}
+  .cursor-blink{display:inline-block;width:7px;height:14px;background:var(--green);animation:blink 1s step-end infinite;vertical-align:middle}
+  @keyframes blink{50%{opacity:0}}
 
-  section{padding:52px 0;border-bottom:1px solid var(--line)}
-  h2{font-size:26px;margin:0 0 8px} .lede{color:var(--muted);margin:0 0 28px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
-  .card h3{margin:0 0 6px;font-size:16px} .card p{margin:0;color:var(--muted);font-size:13.5px}
-  .k{color:var(--accent)} .n1{color:var(--amber)} .err{color:var(--red)} .ok{color:var(--accent2)}
-  .verdict{font-family:var(--mono);font-size:13px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
-  .steps{counter-reset:s;list-style:none;padding:0;margin:0}
-  .steps li{counter-increment:s;position:relative;padding:8px 0 8px 40px;color:var(--muted)}
+  .cta-row{display:flex;gap:12px;flex-wrap:wrap;margin:26px 0 8px}
+  .btn{display:inline-flex;align-items:center;gap:8px;border-radius:5px;padding:10px 16px;font-weight:600;font-size:13px;font-family:var(--mono);border:1px solid var(--line)}
+  .btn.primary{background:var(--green);color:#04140b;border-color:var(--green)}
+  .btn.primary:hover{text-decoration:none;filter:brightness(1.1)}
+  .btn.ghost{color:var(--text)} .btn.ghost:hover{text-decoration:none;border-color:var(--dim)}
+
+  /* ---- sections ---- */
+  section{padding:56px 0;border-top:1px dashed var(--line)}
+  .tag-line{color:var(--dim);font-size:12px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.08em}
+  h2{font-size:21px;margin:0 0 10px;color:var(--bright);font-weight:700}
+  .lede{color:var(--dim);margin:0 0 28px;font-size:13.5px;max-width:640px}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:16px 18px;position:relative}
+  .card::before{content:"//";position:absolute;top:14px;right:16px;color:var(--line);font-size:11px}
+  .card h3{margin:0 0 7px;font-size:13.5px;color:var(--green);font-weight:600;display:flex;align-items:center;gap:6px}
+  .card p{margin:0;color:var(--dim);font-size:12.8px;line-height:1.65}
+  .card code{font-size:.85em}
+
+  .verdict-box{font-size:12.8px;background:var(--bg2);border:1px solid var(--line);border-left:3px solid var(--red);border-radius:0 6px 6px 0;padding:16px 18px;line-height:1.85;overflow-x:auto}
+
+  .steps{list-style:none;padding:0;margin:0;counter-reset:s}
+  .steps li{counter-increment:s;position:relative;padding:10px 0 10px 36px;color:var(--dim);font-size:13px;border-bottom:1px dashed var(--line)}
+  .steps li:last-child{border-bottom:none}
   .steps li b{color:var(--text)}
-  .steps li::before{content:counter(s);position:absolute;left:0;top:8px;width:26px;height:26px;border-radius:50%;background:rgba(129,140,248,.18);color:var(--accent);display:grid;place-items:center;font-weight:700;font-size:12px}
-  footer{padding:40px 0;text-align:center;color:var(--muted);font-size:13px}
-  .compare{width:100%;border-collapse:collapse;font-size:13.5px}
-  .compare th,.compare td{border:1px solid var(--line);padding:9px 12px;text-align:left}
-  .compare th{color:var(--muted);font-weight:600}
-  .gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
-  .shot{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
+  .steps li::before{content:"["counter(s)"]";position:absolute;left:0;top:10px;color:var(--green);font-size:12px}
+
+  table.cmp{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.cmp th,table.cmp td{border:1px solid var(--line);padding:9px 12px;text-align:left}
+  table.cmp th{color:var(--dim);font-weight:600;background:var(--bg2)}
+  table.cmp td.ok{color:var(--green)}
+  table.cmp td.no{color:var(--dim)}
+
+  .gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+  .shot{background:var(--bg2);border:1px solid var(--line);border-radius:6px;overflow:hidden}
   .shot a{display:block;line-height:0}
-  .shot img{width:100%;height:auto;display:block;border-bottom:1px solid var(--line)}
-  .shot .cap{padding:12px 14px}
-  .shot .cap h3{margin:0 0 4px;font-size:14px}
-  .shot .cap p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.55}
-  .shot .cap .tag{display:inline-block;font-size:10px;color:var(--accent);background:rgba(129,140,248,.14);border:1px solid rgba(129,140,248,.3);border-radius:4px;padding:1px 6px;margin-top:8px}
-  .gallery-note{color:var(--muted);font-size:12.5px;margin:0 0 24px}
+  .shot img{width:100%;height:auto;display:block;border-bottom:1px solid var(--line);filter:saturate(.92)}
+  .shot .cap{padding:11px 14px}
+  .shot .cap h3{margin:0 0 4px;font-size:12.8px;color:var(--text);font-weight:600}
+  .shot .cap p{margin:0;color:var(--dim);font-size:11.8px;line-height:1.6}
+
+  .install-pre{position:relative}
+  .copy-hint{position:absolute;top:10px;right:14px;color:var(--dim);font-size:10.5px}
+
+  footer{padding:34px 0;text-align:center;color:var(--dim);font-size:12px;border-top:1px dashed var(--line)}
+  footer a{color:var(--dim)} footer a:hover{color:var(--green)}
+  .ascii{color:var(--dim);font-size:10px;line-height:1.3;margin:0 0 14px;white-space:pre}
 </style>
 </head>
 <body>
-<nav class="nav">
+<nav class="topbar">
   <div class="wrap">
-    <a class="brand" href="#top" aria-label="Tracegrab home">
-      <svg viewBox="0 0 96 96" fill="none" aria-hidden="true"><rect x="6" y="6" width="84" height="84" rx="20" fill="#1b6fe0"/><circle cx="30" cy="30" r="4.2" fill="#bfe0ff"/><circle cx="48" cy="30" r="4.2" fill="#bfe0ff"/><circle cx="66" cy="30" r="4.2" fill="#bfe0ff" fill-opacity=".5"/><path d="M30 30H48" stroke="#bfe0ff" stroke-width="3" stroke-linecap="round"/><path d="M48 30H66" stroke="#bfe0ff" stroke-width="3" stroke-linecap="round" stroke-opacity=".5"/><path d="M30 52 44 66 70 36" stroke="#2fd47a" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
-      Trace<span class="accent">grab</span>
+    <a class="brand" href="#top">
+      <span class="dot3"><span></span><span></span><span></span></span>
+      tracegrab <span class="path">~/debug</span>
     </a>
-    <div class="navlinks">
-      <a href="#what">Features</a>
-      <a href="#agents">For AI agents</a>
-      <a href="#start">Install</a>
-      <a class="btn primary" href="https://github.com/sinhaKAN-ra/tracegrab">GitHub</a>
+    <div class="topnav">
+      <a href="#why">why</a>
+      <a href="#mcp">mcp tools</a>
+      <a href="#install">install</a>
+      <a href="#contributing">contributing</a>
+      <a class="star" href="https://github.com/sinhaKAN-ra/tracegrab">★ star on github</a>
     </div>
   </div>
 </nav>
-<header id="top">
+
+<header class="hero" id="top">
   <div class="wrap">
-    <svg class="hero-mark" viewBox="0 0 96 96" fill="none" role="img" aria-label="Tracegrab"><rect x="6" y="6" width="84" height="84" rx="20" fill="#1b6fe0"/><circle cx="30" cy="30" r="4.2" fill="#bfe0ff"/><circle cx="48" cy="30" r="4.2" fill="#bfe0ff"/><circle cx="66" cy="30" r="4.2" fill="#bfe0ff" fill-opacity=".5"/><path d="M30 30H48" stroke="#bfe0ff" stroke-width="3" stroke-linecap="round"/><path d="M48 30H66" stroke="#bfe0ff" stroke-width="3" stroke-linecap="round" stroke-opacity=".5"/><path d="M30 52 44 66 70 36" stroke="#2fd47a" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
-    <span class="badge">open source · MIT · MCP-native</span>
-    <h1>See how your API code <em>actually behaves</em>.</h1>
-    <p class="tag">Drive an endpoint with a real request, watch data flow through every layer —
-      controller → service → DB and back — and get a <b>diagnosis</b>: exceptions, N+1 queries,
-      silently-lost state, memory growth. Not another stack trace an AI has to guess from.</p>
-    <div class="cta">
-      <a class="btn primary" href="#start">Get started</a>
-      <a class="btn ghost" href="https://github.com/sinhaKAN-ra/tracegrab">View on GitHub</a>
-      <a class="btn ghost" href="#agents">Drive it with an AI agent</a>
+    <p class="kicker">root@localhost:~# status: 31 mcp tools loaded, debugger attached</p>
+    <h1>You don't review the diff. <span class="cmt">// you review the runtime.</span></h1>
+    <p class="sub">An AI agent just rewrote your handler. The diff looks fine. <b>Does the code actually
+      work?</b> Tracegrab sets real breakpoints in your real process, fires a real request, and hands
+      the agent back a <b>diagnosis</b> — not a stack trace it has to guess from.</p>
+
+    <div class="term">
+      <div class="bar"><span class="d r"></span><span class="d y"></span><span class="d g"></span><span class="title">agent session — mcp://tracegrab</span></div>
+      <pre><span class="p">$</span> <span class="cmd">auto_debug</span> <span class="c-d">--scenario checkout.flow.json</span>
+<span class="c-d">→ breakpoints set: 3   calls fired: 2   paused: 4 times</span>
+
+<span class="c-r">verdict: FAILING</span> — exception thrown on this path
+
+<span class="c-r">✗ critical</span>  DBTimeout thrown in <span class="c-k">findItem</span>          <span class="c-d">items.repo.ts:9</span>
+<span class="c-a">⚠ high</span>      N+1: <span class="c-k">findItem</span> called 3× in a loop
+<span class="c-a">⚠ high</span>      token cleared (abc123 → '') in <span class="c-k">getOrders</span>
+<span class="c-d">▲ medium</span>    heap +1.0MB, never reclaimed
+
+<span class="c-d">callPath:</span>
+  <span class="c-k">CONTROLLER</span> getDashboard
+    <span class="c-k">SERVICE</span>    getOrders
+      <span class="c-k">DB</span>         findItem<span class="cursor-blink"></span></pre>
+    </div>
+
+    <div class="cta-row">
+      <a class="btn primary" href="#install">$ get the extension</a>
+      <a class="btn ghost" href="https://github.com/sinhaKAN-ra/tracegrab">source →</a>
+      <a class="btn ghost" href="#mcp">read the mcp spec</a>
     </div>
   </div>
 </header>
 
-<section id="what">
+<section id="why">
   <div class="wrap">
-    <h2>Diagnosis, not raw frames</h2>
-    <p class="lede">One call returns a verdict you can act on — the tool does the reasoning.</p>
-    <div class="verdict">
-verdict: <span class="err">FAILING — an exception was thrown on this path.</span><br>
-findings:<br>
-&nbsp;&nbsp;<span class="err">✗ critical</span> DBTimeout thrown in findItem &nbsp;<span style="color:var(--muted)">items.repo.ts:9</span><br>
-&nbsp;&nbsp;<span class="n1">⚠ high</span>&nbsp;&nbsp;&nbsp;&nbsp; N+1: findItem called 3× in a loop<br>
-&nbsp;&nbsp;<span class="n1">⚠ high</span>&nbsp;&nbsp;&nbsp;&nbsp; token was cleared (abc123 → '') in getOrders<br>
-&nbsp;&nbsp;<span style="color:var(--muted)">▲ medium</span> heap grew 1.0 MB and was never reclaimed<br>
-callPath:<br>
-&nbsp;&nbsp;<span class="k">CONTROLLER</span> getDashboard<br>
-&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">SERVICE</span> getOrders<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="k">DB</span> findItem
-    </div>
-  </div>
-</section>
-
-<section id="features">
-  <div class="wrap">
-    <h2>What it does</h2>
-    <p class="lede">Built for the way AI agents work — and safe enough to point at a real process.</p>
+    <p class="tag-line">// the actual problem</p>
+    <h2>Agents write code fast. They can't see if it runs.</h2>
+    <p class="lede">An LLM reads your source and reasons about what the code <i>should</i> do. It has
+      no eyes on what the code <i>actually</i> does once a request hits a real DB, a real cache, a real
+      race condition. That gap is where "looks right, ships broken" comes from.</p>
     <div class="grid">
-      <div class="card"><h3>Call Map</h3><p>Every method as a box, nested by who called whom, with the data crossing each boundary and the return path back.</p></div>
-      <div class="card"><h3>Auto-diagnosis</h3><p>N+1 queries, thrown exceptions, values silently cleared, DB fan-out, heap growth — ranked with evidence and a suggestion.</p></div>
-      <div class="card"><h3>Agent-native (MCP)</h3><p><strong>31 MCP tools</strong> over stdio. One call — <code>auto_debug</code> — runs the whole investigation and returns a verdict, or drive each step: start a session, set breakpoints, read a pause, mutate a variable, step, continue.</p></div>
-      <div class="card"><h3>Safe by default</h3><p>Secret redaction, least-privilege reads, propose-then-confirm on every live edit, an audit trail, fail-closed mocking.</p></div>
-      <div class="card"><h3>No JSON needed</h3><p>Set a breakpoint in the gutter, hit the endpoint from Postman/curl — captured identically, tagged EXT.</p></div>
-      <div class="card"><h3>Live edits</h3><p>Change a variable mid-flight to force a branch, then read it back — without touching source.</p></div>
+      <div class="card"><h3>&gt; no fake traces</h3><p>Real breakpoints in <code>vscode.debug</code>, on your actual process. Not a sandboxed re-execution, not a mocked call graph — the live thing, paused mid-flight.</p></div>
+      <div class="card"><h3>&gt; structured, not stdout</h3><p>Output is a typed verdict + ranked findings an agent can branch on programmatically. No regex-ing a console dump to find the bug.</p></div>
+      <div class="card"><h3>&gt; the agent drives itself</h3><p>31 MCP tools over stdio. No copy-pasting logs back and forth between your terminal and a chat window.</p></div>
+      <div class="card"><h3>&gt; closes the loop</h3><p><code>save_trace</code> → ship the fix → <code>compare_traces</code>. The agent proves REGRESSION / CHANGED / EQUIVALENT instead of asserting "should be fixed now."</p></div>
     </div>
   </div>
 </section>
 
-<section id="screenshots">
+<section id="mcp">
   <div class="wrap">
-    <h2>See it in action</h2>
-    <p class="lede">The run-centric workspace: the behavioural verdict first, evidence and controls around it.</p>
-    <p class="gallery-note">Click any image for full size — captured from the real built webview.</p>
+    <p class="tag-line">// mcp://tracegrab</p>
+    <h2>Built MCP-native. Not bolted on.</h2>
+    <p class="lede">Any MCP client — Cursor, Claude Code, Kiro, your own agent loop — gets the same
+      31-tool surface. Register once:</p>
+    <div class="install-pre">
+      <span class="copy-hint">~/.cursor/mcp.json</span>
+      <pre style="background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:16px 18px;overflow-x:auto;font-size:12.5px;line-height:1.8">{ <span class="c-d">"mcpServers"</span>: { <span class="c-d">"tracegrab"</span>: {
+  <span class="c-d">"command"</span>: <span class="c-g">"node"</span>,
+  <span class="c-d">"args"</span>: [<span class="c-g">"/ABS/PATH/tracegrab/mcp/flow-mcp.mjs"</span>],
+  <span class="c-d">"env"</span>: { <span class="c-d">"FLOW_WORKSPACE"</span>: <span class="c-g">"/ABS/PATH/to/target/repo"</span> }
+} } }</pre>
+    </div>
+
+    <div class="grid" style="margin-top:18px">
+      <div class="card"><h3>auto_debug()</h3><p>One call: set breakpoints, drive the scenario, build the call map, run every detector, return a verdict. The whole investigation, one round trip.</p></div>
+      <div class="card"><h3>get_pause_state() → debug_step()</h3><p>Granular control when auto isn't enough: read a live pause, inspect scope, mutate a variable to force a branch, step, continue. Read → decide → act.</p></div>
+      <div class="card"><h3>start_headless_session()</h3><p>No VS Code required. The same steer loop runs in CI, a container, or a pure-agent box. Node always; Python via <code>debugpy</code>.</p></div>
+      <div class="card"><h3>save_trace() / compare_traces()</h3><p>Baseline a run, diff a later one — REGRESSION / CHANGED / EQUIVALENT — plus behavior contracts an agent (or CI) can gate on.</p></div>
+      <div class="card"><h3>get_call_map() / get_memory_timeline()</h3><p>Structured runtime truth: nested calls, boundary data, heap deltas, variable values, Mermaid export. Something to reason over, not a screenshot.</p></div>
+      <div class="card"><h3>get_capabilities() / get_audit_log()</h3><p>The agent probes what's possible before committing. Every live mutation is logged. Secrets redacted, propose-then-confirm by default.</p></div>
+    </div>
+    <p style="color:var(--dim);font-size:12.5px;margin-top:16px">Ships with an <code>AGENTS.md</code> the agent reads unprompted — it tells the agent <i>when</i> to reach for this (a bug report, a ticket, "why does endpoint X do Y") and how to turn that into breakpoints + a run. Full spec: <code>docs/AGENT_AUTOMATION.md</code>.</p>
+  </div>
+</section>
+
+<section id="screens">
+  <div class="wrap">
+    <p class="tag-line">// receipts</p>
+    <h2>What the agent (and you) actually see</h2>
+    <p class="lede">Captured from the real built webview — verdict first, evidence around it.</p>
     <div class="gallery">
       <figure class="shot">
         <a href="assets/callmap.png" target="_blank" rel="noopener"><img src="assets/callmap.png" alt="Run-centric workspace with verdict, findings, call map and inspector" loading="lazy"></a>
-        <figcaption class="cap"><h3>Run-centric workspace</h3><p>Verdict strip, ranked findings, the nested Call Map, run history rail, and the live inspector — the debugger answer, not raw frames.</p><span class="tag">product</span></figcaption>
+        <figcaption class="cap"><h3>verdict + call map</h3><p>Ranked findings, nested call tree, run history, live inspector — in one view.</p></figcaption>
       </figure>
       <figure class="shot">
         <a href="assets/phase4-prove.png" target="_blank" rel="noopener"><img src="assets/phase4-prove.png" alt="Prove tab showing a regression comparison and a failing contract" loading="lazy"></a>
-        <figcaption class="cap"><h3>Prove a change</h3><p>Save a baseline, compare a later run (REGRESSION / CHANGED / EQUIVALENT), and verify a behaviour contract — the same engine that gates CI.</p><span class="tag">product</span></figcaption>
+        <figcaption class="cap"><h3>prove.diff()</h3><p>Baseline vs. later run: REGRESSION / CHANGED / EQUIVALENT, plus a contract check.</p></figcaption>
       </figure>
       <figure class="shot">
         <a href="assets/phase3-request.png" target="_blank" rel="noopener"><img src="assets/phase3-request.png" alt="Request editor with headers, body and extraction fields" loading="lazy"></a>
-        <figcaption class="cap"><h3>Request editor</h3><p>Every request field — method, URL, headers, body, and response-value extraction — with reorder and duplicate.</p><span class="tag">product</span></figcaption>
+        <figcaption class="cap"><h3>request editor</h3><p>Method, URL, headers, body, response-value extraction. Reorder, duplicate.</p></figcaption>
       </figure>
       <figure class="shot">
         <a href="assets/phase2-onboarding.png" target="_blank" rel="noopener"><img src="assets/phase2-onboarding.png" alt="First-run onboarding offering three capture paths" loading="lazy"></a>
-        <figcaption class="cap"><h3>Guided first run</h3><p>Three ways to start — observe a Postman request, run a scenario, or let an agent/CI collect — over an honest precondition checklist.</p><span class="tag">product</span></figcaption>
-      </figure>
-      <figure class="shot">
-        <a href="assets/phase2-medium.png" target="_blank" rel="noopener"><img src="assets/phase2-medium.png" alt="Workspace at a medium editor-panel width" loading="lazy"></a>
-        <figcaption class="cap"><h3>Responsive · medium</h3><p>At a standard editor-panel width the run rail collapses and evidence chips stay in a scrollable strip.</p><span class="tag">product</span></figcaption>
-      </figure>
-      <figure class="shot">
-        <a href="assets/phase2-narrow.png" target="_blank" rel="noopener"><img src="assets/phase2-narrow.png" alt="Workspace stacked vertically at a narrow width" loading="lazy"></a>
-        <figcaption class="cap"><h3>Responsive · narrow</h3><p>At a narrow width evidence and context stack vertically, with the runtime bar and actions kept sticky.</p><span class="tag">product</span></figcaption>
+        <figcaption class="cap"><h3>cold start</h3><p>Observe a Postman request, run a scenario, or let an agent/CI collect — your pick.</p></figcaption>
       </figure>
     </div>
+  </div>
+</section>
+
+<section id="compare">
+  <div class="wrap">
+    <p class="tag-line">// not another debugger</p>
+    <h2>DAP-over-MCP gives you frames. This gives you a verdict.</h2>
+    <table class="cmp">
+      <tr><th></th><th>generic dap-over-mcp</th><th>tracegrab</th></tr>
+      <tr><td>model</td><td class="no">step / inspect / evaluate</td><td class="ok">request-shaped call map + diagnosis</td></tr>
+      <tr><td>output</td><td class="no">raw frames &amp; variables</td><td class="ok">verdict + ranked findings</td></tr>
+      <tr><td>http flow aware</td><td class="no">—</td><td class="ok">✓ controller→service→db</td></tr>
+      <tr><td>n+1 / silent-clear / heap</td><td class="no">—</td><td class="ok">✓ auto-detected</td></tr>
+      <tr><td>mock the db for a run</td><td class="no">—</td><td class="ok">✓ boundary injection</td></tr>
+      <tr><td>headless (no ide)</td><td class="no">—</td><td class="ok">✓ ci-safe</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <p class="tag-line">// get running</p>
+    <h2>How to install</h2>
+    <p class="lede">Not on the VS Code Marketplace yet — the extension ships as a built <code>.vsix</code>
+      you grab from the repo and install directly. Works in VS Code, Cursor, and Windsurf (all three
+      read the same <code>.vsix</code> format).</p>
+
+    <div class="grid" style="margin-bottom:18px">
+      <div class="card"><h3>&gt; where to find it</h3><p>GitHub repo: <a href="https://github.com/sinhaKAN-ra/tracegrab/releases">github.com/sinhaKAN-ra/tracegrab/releases</a> once a release is cut, or build your own <code>.vsix</code> from <code>main</code> with the commands below — same artifact either way.</p></div>
+      <div class="card"><h3>&gt; what you need</h3><p>Node.js 18+, VS Code / Cursor / Windsurf, and the <a href="https://github.com/microsoft/vscode-vsce">vsce</a> packager (pulled in automatically via <code>npx</code> below — no global install).</p></div>
+    </div>
+
+    <pre style="background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:16px 18px;font-size:12.8px;line-height:1.85;overflow-x:auto"><span class="p">$</span> <span class="cmd">git clone</span> https://github.com/sinhaKAN-ra/tracegrab <span class="c-d">&amp;&amp;</span> <span class="cmd">cd</span> tracegrab
+<span class="p">$</span> <span class="cmd">npm install</span>
+<span class="p">$</span> <span class="cmd">npm run build</span>        <span class="c-d"># webview + host</span>
+<span class="p">$</span> <span class="cmd">npx vsce package</span>     <span class="c-d"># → tracegrab-0.0.1.vsix</span>
+<span class="p">$</span> <span class="cmd">code --install-extension</span> tracegrab-0.0.1.vsix   <span class="c-d"># or: cursor --install-extension ...</span></pre>
+    <p style="color:var(--dim);font-size:12.3px;margin-top:12px">Already have the <code>.vsix</code> from a release? Skip straight to the last line, or use <b>Extensions panel → <code>···</code> → Install from VSIX</b> if you'd rather click than type.</p>
   </div>
 </section>
 
 <section id="start">
   <div class="wrap">
-    <h2>Get started</h2>
-    <p class="lede">A VS Code / Cursor / Windsurf extension. Build, install, debug.</p>
-    <pre>git clone https://github.com/sinhaKAN-ra/tracegrab &amp;&amp; cd tracegrab
-npm install
-npm run build          # webview + host
-npm test               # host + call-tree + safety suites
-npx vsce package       # → tracegrab-*.vsix
-code --install-extension tracegrab-*.vsix</pre>
+    <p class="tag-line">// first run</p>
+    <h2>Getting started</h2>
+    <p class="lede">Three steps from installed extension to a live, agent-readable trace.</p>
     <ol class="steps">
-      <li><b>F5</b> your API so it runs under the debugger.</li>
-      <li>Run <b>“Tracegrab: Start”</b> and set breakpoints (gutter or panel).</li>
-      <li>Hit the endpoint — from the panel’s runner, or Postman/curl. Watch the Call Map fill.</li>
+      <li><b>F5</b> your API in VS Code so it's running under the debugger — or skip the IDE entirely with <code>start_headless_session()</code> (no F5, works in CI/containers).</li>
+      <li>Open the panel — Command Palette → <b>Tracegrab: Start</b> — and set breakpoints from the gutter or the panel.</li>
+      <li>Hit the endpoint yourself, or hand <code>mcp/flow-mcp.mjs</code> to your agent and let it call <code>auto_debug()</code>. Watch the call map and verdict fill in live.</li>
     </ol>
   </div>
 </section>
 
-<section id="agents">
+<section id="contributing">
   <div class="wrap">
-    <h2>Built to be driven by AI agents</h2>
-    <p class="lede">Tracegrab is MCP-native: it ships a server exposing <strong>31 tools</strong> so an AI coding agent (Cursor, Claude, Kiro, any MCP client) can set breakpoints, run a flow, read the live runtime, and decide what changed — without a human in the loop.</p>
-    <pre>{ "mcpServers": { "tracegrab": {
-  "command": "node",
-  "args": ["/ABS/PATH/tracegrab/mcp/flow-mcp.mjs"],
-  "env": { "FLOW_WORKSPACE": "/ABS/PATH/to/target/repo" }
-} } }</pre>
-
-    <div class="grid" style="margin-top:24px">
-      <div class="card"><h3>One-shot investigation</h3><p><code>auto_debug({ scenario })</code> sets the breakpoints, drives the calls, builds the Call Map, runs the detectors, and returns a verdict + ranked findings in a single call.</p></div>
-      <div class="card"><h3>Live session control</h3><p><code>start_debug_session</code>, <code>get_pause_state</code>, <code>debug_step</code>, <code>debug_continue</code>, <code>debug_set_variable</code> — the agent reads a pause, decides, mutates a variable to force a branch, and steps on. Read→decide→act, programmatically.</p></div>
-      <div class="card"><h3>Headless — no IDE</h3><p><code>start_headless_session</code> / <code>collect_trace_headless</code> hold a live debug session with <strong>no VS Code open</strong> — the same steer loop runs in CI or a pure-agent environment. Node always; Python when <code>debugpy</code> is present.</p></div>
-      <div class="card"><h3>Prove behaviour changed</h3><p><code>save_trace</code> a baseline, <code>compare_traces</code> a later run (REGRESSION / CHANGED / EQUIVALENT), and <code>create_behavior_contract</code> + <code>verify_behavior_contract</code> to gate the change — the same engine the CI runner uses.</p></div>
-      <div class="card"><h3>Read the runtime</h3><p><code>get_call_map</code>, <code>analyze_state</code>, <code>evaluate_expression</code>, <code>get_memory_timeline</code>, <code>get_variable_values</code>, <code>export_mermaid</code> — structured runtime truth the agent can reason over, not a screenshot.</p></div>
-      <div class="card"><h3>Self-describing &amp; safe</h3><p><code>get_capabilities</code> / <code>get_instructions</code> let an agent probe what's possible before committing to a path; <code>get_audit_log</code> records every live edit. Secret redaction and propose-then-confirm are on by default.</p></div>
-    </div>
-    <p style="color:var(--muted);font-size:13.5px;margin-top:18px">The agent reads a bundled <code>AGENTS.md</code> that tells it <em>when</em> to reach for the tool (a ticket, a bug report, "why does endpoint X do Y") and how to turn it into breakpoints + a run. Full guide: <code>docs/AGENT_AUTOMATION.md</code>.</p>
-  </div>
-</section>
-
-<section id="different">
-  <div class="wrap">
-    <h2>Not a generic step-debugger</h2>
-    <p class="lede">Those exist and are good. This is a different job: proving AI-changed code still behaves.</p>
-    <table class="compare">
-      <tr><th></th><th>Generic DAP-over-MCP</th><th>Tracegrab</th></tr>
-      <tr><td>Model</td><td>step / inspect / evaluate</td><td>request-shaped Call Map + diagnosis</td></tr>
-      <tr><td>Output</td><td>raw frames &amp; variables</td><td>verdict + ranked findings</td></tr>
-      <tr><td>Understands HTTP flow</td><td>—</td><td class="ok">✓ controller→service→DB</td></tr>
-      <tr><td>N+1 / silent-clear / heap</td><td>—</td><td class="ok">✓ auto-detected</td></tr>
-      <tr><td>Mock the DB for a run</td><td>—</td><td class="ok">✓ boundary injection</td></tr>
-    </table>
+    <p class="tag-line">// hack on it</p>
+    <h2>Contributing</h2>
+    <p class="lede">VS Code extension host (<code>src/</code>, Node/TS) + a React webview
+      (<code>webview-ui/</code>) + a zero-dep MCP server (<code>mcp/</code>). Full map in
+      <code>CONTRIBUTING.md</code>.</p>
+    <pre style="background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:16px 18px;font-size:12.8px;line-height:1.85;overflow-x:auto"><span class="p">$</span> <span class="cmd">git clone</span> https://github.com/sinhaKAN-ra/tracegrab <span class="c-d">&amp;&amp;</span> <span class="cmd">cd</span> tracegrab
+<span class="p">$</span> <span class="cmd">npm install</span>
+<span class="p">$</span> <span class="cmd">npm run build</span>        <span class="c-d"># webview (Vite) then host (tsc)</span>
+<span class="p">$</span> <span class="cmd">npm test</span>             <span class="c-d"># host-logic + call-tree + safety suites</span></pre>
+    <p style="color:var(--dim);font-size:12.3px;margin:14px 0 10px">Gates a PR must pass green:</p>
+    <ol class="steps">
+      <li><code>npm run compile</code> — host TypeScript, 0 errors.</li>
+      <li><code>npm run build --prefix webview-ui</code> — webview build, 0 errors.</li>
+      <li><code>cd webview-ui &amp;&amp; npx oxlint src</code> — 0 warnings, 0 errors.</li>
+      <li><code>npm run lint:boundaries</code> — public core stays self-contained and strategy-free.</li>
+    </ol>
+    <p style="color:var(--dim);font-size:12.3px;margin-top:16px">One logical change per PR. Never commit secrets, <code>.vsix</code> artifacts, or <code>.flow-debugger/</code> runtime output. Found a bug or want to propose a feature? Open an issue, or email <a href="mailto:nomore.report@gmail.com">nomore.report@gmail.com</a> directly.</p>
   </div>
 </section>
 
 <footer>
   <div class="wrap">
-    MIT licensed · <a href="https://github.com/sinhaKAN-ra/tracegrab">GitHub</a> ·
-    <a href="#start">Docs</a> · Built to be forked, extended, and driven by agents.
+    MIT · <a href="https://github.com/sinhaKAN-ra/tracegrab">github.com/sinhaKAN-ra/tracegrab</a> ·
+    <a href="/llms.txt">llms.txt</a> · feedback &amp; contributions: <a href="mailto:nomore.report@gmail.com">nomore.report@gmail.com</a> ·
+    built to be forked, extended, and driven by agents — not us.
   </div>
 </footer>
 </body>
