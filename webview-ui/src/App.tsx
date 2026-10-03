@@ -1256,8 +1256,8 @@ function MockPanel({
           <div className="mock-empty">
             None. A boundary mock stubs a DB/external call in the running app. Target it
             explicitly as <code>module#method</code> — e.g. match
-            <code>src/db/WorkflowDynamoAccessor#getWorkflowInternal</code> returns <code>{'{"id":"W1"}'}</code>.
-            A bare name like <code>db.getClaim</code> cannot be resolved.
+            <code>src/db/OrderRepository#findById</code> returns <code>{'{"id":"A1"}'}</code>.
+            A bare name like <code>db.query</code> cannot be resolved.
           </div>
         ) : mocks.map((m, i) => {
           const inj = injection?.results.find((r) => r.match === m.match);

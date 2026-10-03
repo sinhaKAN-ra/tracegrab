@@ -90,9 +90,9 @@ breakpoints and record whatever external trigger hits them.
 
 MOCKING THE DB (dbMode "mocked"): interception is real but needs an EXPLICIT
 target. A boundary mock must name a module and method:
-  { "match": "src/db/WorkflowDynamoAccessor#getWorkflowInternal", "returns": {...} }
+  { "match": "src/db/OrderRepository#findById", "returns": {...} }
   { "match": "src/db/Accessor#ClassName.methodName", "returns": {...} }
-A bare substring like "db.getClaim" cannot be resolved and is reported as
+A bare substring like "db.query" cannot be resolved and is reported as
 unsupported. Injection monkey-patches the method in the live debuggee via DAP
 evaluate (Node/CommonJS). ALWAYS read the mockInjection block in the response:
 if any result is not "ok", that call hit the REAL dependency and the run was NOT
