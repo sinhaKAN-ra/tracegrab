@@ -22,6 +22,7 @@ import { PauseBridge } from './pauseBridge.js';
 import { redactValue } from './redact.js';
 import { LicenseService } from './licenseService.js';
 import { SessionManager, type DrivenState } from './sessionManager.js';
+import { esmImport } from './esmImport.js';
 
 let panel: vscode.WebviewPanel | undefined;
 
@@ -59,6 +60,36 @@ const HEARTBEAT_MS = 5000;
  */
 let pendingStart: { name: string; type?: string; startedBy: 'agent' | 'human'; at: number } | undefined;
 let pendingStartTimer: NodeJS.Timeout | undefined;
+
+/**
+ * Diagnostic log channel ("Tracegrab"). The extension used to have ZERO logging,
+ * which made "panel shows nothing / session.json stays live:false" impossible to
+ * diagnose from the user's side. Everything the adoption/write path does now
+ * leaves a line here (View → Output → Tracegrab).
+ */
+let logChannel: vscode.OutputChannel | undefined;
+function log(msg: string): void {
+    try { logChannel?.appendLine(`[${new Date().toISOString()}] ${msg}`); } catch { /* never break the flow for a log */ }
+}
+
+/**
+ * VS Code's JS debugger rewrites a launch.json `type:"node"` into `"pwa-node"`
+ * (and `type:"python"` into `"debugpy"`) at session-start time, so the raw
+ * `session.type` reported by onDidStartDebugSession does NOT equal the config's
+ * declared type. Comparing them literally silently drops the pendingStart match
+ * (the classic node/pwa-node gotcha). Normalize both sides to a family before
+ * comparing so the adopt-as-driven path fires for the session the user launched.
+ */
+function debugTypeFamily(t: string | undefined): string {
+    const s = (t || '').toLowerCase();
+    if (/node|pwa-node|js|chrome|pwa-chrome|pwa-msedge|node-terminal/.test(s)) return 'node';
+    if (/python|debugpy/.test(s)) return 'python';
+    return s;
+}
+function typesCompatible(declared: string | undefined, actual: string | undefined): boolean {
+    if (!declared) return true; // no declared type → name match alone is enough
+    return debugTypeFamily(declared) === debugTypeFamily(actual);
+}
 
 function setPendingStart(p: { name: string; type?: string; startedBy: 'agent' | 'human' }): void {
     pendingStart = { ...p, at: Date.now() };
@@ -146,12 +177,15 @@ function callmapUri(): vscode.Uri {
 
 export function activate(context: vscode.ExtensionContext) {
     extensionUri = context.extensionUri;
+    logChannel = vscode.window.createOutputChannel('Tracegrab');
+    context.subscriptions.push(logChannel);
+    log(`activate: workspaceRoot=${workspaceRoot()}  session.json=${workspaceRoot()}/.flow-debugger/captures/session.json`);
     const store = new MockStore(workspaceRoot());
     breakpointManager = new BreakpointManager(workspaceRoot());
     // easy-start: the manager owns the driven session; the bridge resolves its
     // session against the DRIVEN one (not whatever VS Code last focused), which
     // single-handedly fixes "the bridge drives whatever is focused" (design §2.2).
-    sessionManager = new SessionManager(workspaceRoot(), callmapUri);
+    sessionManager = new SessionManager(workspaceRoot(), callmapUri, log);
     pauseBridge = new PauseBridge(workspaceRoot(), () => sessionManager.get()?.session);
     pauseBridge.register(context, (m) => postToWebview({ kind: 'info', message: m }));
     // Wire the one-step-start / switch callbacks so the bridge delegates to the
@@ -166,7 +200,30 @@ export function activate(context: vscode.ExtensionContext) {
     // easy-start host-reload safety: no debug session survives an extension-host
     // reload, so stamp any leftover session.json to live:false immediately rather
     // than letting a seconds-old heartbeat read as RUNNING (design §2.5).
-    void sessionManager.writeNotLive('host reloaded; previous session did not survive');
+    //
+    // The adopt-already-running reconciliation below is chained AFTER this write
+    // resolves, because adoptAsDriven() fires its own session.json write (via
+    // touch()); if writeNotLive landed last it would clobber the fresh live:true
+    // back to false. activate() stays synchronous — only the two file writes are
+    // ordered relative to each other.
+    void sessionManager.writeNotLive('host reloaded; previous session did not survive')
+        .then(() => {
+            // easy-start reconciliation (fixes "panel shows RUNNING but session.json
+            // stays live:false"): onDidStartDebugSession only fires for sessions that
+            // start AFTER we subscribe, so a debug session already running when the
+            // extension host (re)activates — e.g. the user reloads the window to pick
+            // up mcp.json while a Tracegrab session is live — is never adopted, and
+            // session.json is frozen at the live:false stamp above even though the VS
+            // Code debug API still sees it. Adopt it here so the file bridge the MCP
+            // tools read reflects reality.
+            const alreadyRunning = vscode.debug.activeDebugSession;
+            if (alreadyRunning && !sessionManager.get()) {
+                log(`activate-reconcile: adopting already-running session "${alreadyRunning.name}" (${alreadyRunning.type})`);
+                adoptAsDriven(alreadyRunning, 'human', alreadyRunning.name);
+            } else {
+                log(`activate-reconcile: nothing to adopt (activeDebugSession=${alreadyRunning ? `"${alreadyRunning.name}"` : 'null'}, alreadyDriven=${!!sessionManager.get()})`);
+            }
+        });
     // Project the folder's launch configs so an agent can discover names, and
     // keep it fresh on any launch-config change (design §3.2).
     void writeLaunchConfigs();
@@ -269,19 +326,22 @@ export function activate(context: vscode.ExtensionContext) {
             let startedBy: 'agent' | 'human' | undefined;
             let configName: string | undefined;
             if (pendingStart && session.name === pendingStart.name
-                && (!pendingStart.type || session.type === pendingStart.type)) {
+                && typesCompatible(pendingStart.type, session.type)) {
                 startedBy = pendingStart.startedBy;
                 configName = pendingStart.name;
                 clearPendingStart();
             }
             if (startedBy) {
+                log(`onDidStartDebugSession: ADOPT-DRIVEN (pendingStart match) name="${session.name}" type="${session.type}" startedBy=${startedBy}`);
                 adoptAsDriven(session, startedBy, configName);
             } else if (!sessionManager.get()) {
                 // No session driven yet — the common F5 case: bind this one.
+                log(`onDidStartDebugSession: ADOPT-HUMAN (nothing driven) name="${session.name}" type="${session.type}" pendingStart=${pendingStart ? `name="${pendingStart.name}" type="${pendingStart.type}"` : 'none'}`);
                 adoptAsDriven(session, 'human', undefined);
             } else {
                 // A second, unrelated session: track it but do not steal the driver
                 // and do not touch any capture file (design §2.3).
+                log(`onDidStartDebugSession: TRACK-OTHER (already driving "${sessionManager.get()?.name}") name="${session.name}" type="${session.type}"`);
                 sessionManager.track(session, { startedBy: 'human' });
                 void sessionManager.touch(); // reproject otherSessions only
             }
@@ -413,6 +473,7 @@ function adoptAsDriven(session: vscode.DebugSession, startedBy: 'agent' | 'human
     void pauseBridge.resetLog();
     // Read a config-sourced port immediately (no pause needed, design §4.3).
     seedConnectionFromConfig(session);
+    log(`adoptAsDriven: driving "${session.name}" (${session.type}) → writing session.json live:true`);
     void sessionManager.touch();
     postToWebview({ kind: 'session', status: 'started', name: session.name });
     postToWebview({ kind: 'debugStatus', status: 'running' });
@@ -1398,9 +1459,9 @@ function publishAllBreakpoints() {
  * internal call — DAP has no "force return" and cannot skip a call site.
  *
  * Mock `match` syntax (explicit form REQUIRED for injection):
- *   "<module>#<method>"          e.g. "src/db/WorkflowDynamoAccessor#getWorkflowInternal"
- *   "<module>#<Class>.<method>"  e.g. "src/db/WorkflowDynamoAccessor#WorkflowDataAccessorDDbImpl.getWorkflowInternal"
- * A bare substring (legacy "db.getClaim") cannot be resolved to a real symbol
+ *   "<module>#<method>"          e.g. "src/db/OrderRepository#findById"
+ *   "<module>#<Class>.<method>"  e.g. "src/db/OrderRepository#OrderRepositoryImpl.findById"
+ * A bare substring (legacy "db.query") cannot be resolved to a real symbol
  * and is reported as unsupported rather than silently ignored.
  *
  * Node/CommonJS only: it relies on `require` being in scope in the evaluated
@@ -1423,7 +1484,7 @@ async function applyBoundaryMocks(scenario: Scenario): Promise<MockInjectionRepo
                 status: 'unsupported',
                 message:
                     'Cannot resolve this target. Use "<module>#<method>" or "<module>#<Class>.<method>" ' +
-                    '(e.g. "src/db/WorkflowDynamoAccessor#getWorkflowInternal").',
+                    '(e.g. "src/db/OrderRepository#findById").',
             });
             continue;
         }
@@ -1491,15 +1552,15 @@ async function generateReportCmd(format: 'markdown' | 'html') {
             return;
         }
         // Reuse the zero-dep implementation (ESM) from the extension bundle.
-        const mod = await import(
-            /* webpackIgnore: true */ vscode.Uri.joinPath(extensionUri!, 'mcp', 'callmap.mjs').toString()
-        ) as {
+        // esmImport keeps a native dynamic import() so the ESM .mjs loads under
+        // module:commonjs (a plain import() would be downleveled to require()).
+        const mod = await esmImport<{
             buildCallTree: (p: unknown[]) => unknown[];
             inferState: (p: unknown[], r: unknown[]) => { verdict: string; findings: unknown[] };
             buildFlowTrace: (i: unknown) => { id: string; verdict: string };
             reportMarkdown: (t: unknown) => string;
             reportHtml: (t: unknown) => string;
-        };
+        }>(vscode.Uri.joinPath(extensionUri!, 'mcp', 'callmap.mjs').toString());
         const roots = mod.buildCallTree(pauses as unknown[]);
         const diagnosis = mod.inferState(pauses as unknown[], roots);
         // audit trail, if any
@@ -1549,9 +1610,11 @@ type ProveModule = {
 };
 
 async function loadProveModule(): Promise<ProveModule> {
-    return await import(
-        /* webpackIgnore: true */ vscode.Uri.joinPath(extensionUri!, 'mcp', 'callmap.mjs').toString()
-    ) as unknown as ProveModule;
+    // esmImport keeps a native dynamic import() so the ESM .mjs loads under
+    // module:commonjs (a plain import() would be downleveled to require()).
+    return await esmImport<ProveModule>(
+        vscode.Uri.joinPath(extensionUri!, 'mcp', 'callmap.mjs').toString()
+    );
 }
 
 /** Build a FlowTrace from the CURRENT recorded pause log, or undefined if none. */

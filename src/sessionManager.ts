@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { ToWebview } from './protocol.js';
+import { esmImport } from './esmImport.js';
 
 /**
  * easy-start: the SessionManager owns the one FIRST-CLASS notion the extension
@@ -96,8 +97,14 @@ export class SessionManager {
     constructor(
         private workspaceRoot: string,
         /** Resolves the extension's own mcp/callmap.mjs URI for the lazy import. */
-        private callmapUri: () => vscode.Uri
+        private callmapUri: () => vscode.Uri,
+        /** Optional diagnostic logger (View → Output → Tracegrab). */
+        private logFn?: (msg: string) => void
     ) {}
+
+    private log(msg: string): void {
+        try { this.logFn?.(msg); } catch { /* logging must never break the flow */ }
+    }
 
     // ---- membership / driven pointer ----
 
@@ -240,11 +247,15 @@ export class SessionManager {
     /** Lazily load the pure projectSessionStatus helper from mcp/callmap.mjs. */
     private async project(): Promise<ProjectFn> {
         if (this.projectFn) return this.projectFn;
-        const mod = (await import(/* webpackIgnore: true */ this.callmapUri().toString())) as {
-            projectSessionStatus: ProjectFn;
-        };
-        this.projectFn = mod.projectSessionStatus;
-        return this.projectFn;
+        const uri = this.callmapUri().toString();
+        try {
+            const mod = await esmImport<{ projectSessionStatus: ProjectFn }>(uri);
+            this.projectFn = mod.projectSessionStatus;
+            return this.projectFn;
+        } catch (err) {
+            this.log(`project: FAILED to import callmap.mjs at ${uri} — ${err instanceof Error ? err.message : String(err)}`);
+            throw err;
+        }
     }
 
     /**
@@ -258,8 +269,12 @@ export class SessionManager {
             const driven = this.drivenProjection();
             const obj = projectSessionStatus(driven, this.others(), new Date().toISOString());
             await this.writeAtomic(this.dir('captures', 'session.json'), JSON.stringify(obj, null, 2));
-        } catch {
-            /* best-effort; status projection must never break the debug flow */
+            this.log(`touch: wrote session.json live=${driven ? 'true' : 'false'} path=${this.dir('captures', 'session.json').fsPath}`);
+        } catch (err) {
+            // best-effort; status projection must never break the debug flow —
+            // but a FAILURE here is the exact silent cause of "session.json never
+            // updates", so it must be visible.
+            this.log(`touch: FAILED to write session.json — ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
         }
     }
 
@@ -270,8 +285,8 @@ export class SessionManager {
             const obj = projectSessionStatus(null, this.others(), new Date().toISOString());
             if (note) (obj as Record<string, unknown>).note = note;
             await this.writeAtomic(this.dir('captures', 'session.json'), JSON.stringify(obj, null, 2));
-        } catch {
-            /* best-effort */
+        } catch (err) {
+            this.log(`writeNotLive: FAILED — ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
         }
     }
 
