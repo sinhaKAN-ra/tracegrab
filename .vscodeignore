@@ -1,6 +1,12 @@
 # Exclude everything the runtime extension does not need.
 .vscode/**
 .kiro/**
+.worktrees/**
+.agents/**
+.githooks/**
+.github/**
+.git/**
+scripts/**
 node_modules/**
 webview-ui/node_modules/**
 webview-ui/src/**
@@ -15,9 +21,11 @@ webview-ui/.oxlintrc.json
 webview-ui/README.md
 src/**
 verify/**
-cli/**
+# cli/ ships: the MCP server imports ../cli/collector.mjs and
+# ../cli/headless-session.mjs at runtime. Exclude only its tests.
+cli/**/*.test.mjs
 !mcp/callmap.mjs
-mcp/flow-mcp.mjs
+!mcp/flow-mcp.mjs
 .cursor/**
 AGENTS.md
 tsconfig.json

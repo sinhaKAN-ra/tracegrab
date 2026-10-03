@@ -44,13 +44,6 @@
   "bin": {
     "tracegrab-mcp": "./mcp/flow-mcp.mjs"
   },
-  "files": [
-    "mcp/",
-    "cli/",
-    "media/brand/",
-    "README.md",
-    "LICENSE"
-  ],
   "contributes": {
     "commands": [
       {
