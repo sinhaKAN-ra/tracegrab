@@ -71,6 +71,14 @@ export interface CallNode {
     heapPeak?: number;
     /** heap delta across this method's lifetime (last - first), bytes. */
     heapDelta?: number;
+    /** set when this node was entered more than once (a loop). enteredCount is the repeat count. */
+    looped?: boolean;
+    /** set when consecutive same-key iterations were folded into this node. */
+    aggregated?: boolean;
+    /** set when this method's key matches an open ancestor (self-recursion). */
+    recursive?: boolean;
+    /** how deep the self-recursion nests (levels of the self-chain). */
+    recursionDepth?: number;
 }
 
 export type Transition =
@@ -179,7 +187,6 @@ export class CallTreeBuilder {
                 );
                 if (sib) {
                     sib.n1 = true;
-                    sib.enteredCount = count;
                 }
             }
         } else {
@@ -291,6 +298,11 @@ export function toMermaidSequence(roots: CallNode[]): string {
     }
     const emit = (n: CallNode) => {
         for (const c of n.children) {
+            const looped = c.looped || (c.enteredCount ?? 1) > 1;
+            const loopLabel = looped
+                ? `loop ${c.enteredCount}×${c.recursive ? ' (recursive)' : ''}`
+                : (c.recursive ? `loop (recursive, depth ${c.recursionDepth ?? 1})` : null);
+            if (loopLabel) lines.push(`    ${loopLabel}`);
             const dataIn = c.dataIn ? `: ${c.dataIn}` : '';
             lines.push(`    ${alias(n)}->>${alias(c)}: call${dataIn}`);
             if (c.n1) lines.push(`    Note over ${alias(c)}: ⚠ N+1 ×${c.enteredCount}`);
@@ -298,15 +310,90 @@ export function toMermaidSequence(roots: CallNode[]): string {
             emit(c);
             const dataOut = c.dataOut ? `: ${c.dataOut}` : ': return';
             lines.push(`    ${alias(c)}-->>${alias(n)}${dataOut}`);
+            if (loopLabel) lines.push(`    end`);
         }
     };
     roots.forEach(emit);
     return lines.join('\n');
 }
 
+/**
+ * Post-build pass (pure). Collapses runs of CONSECUTIVE same-key children under
+ * a parent (a loop) and self-calls (recursion) into a single aggregated node,
+ * and marks loop / recursion metadata. The single writer of `enteredCount` /
+ * `looped`. Keep byte-for-byte in sync with mcp/callmap.mjs.
+ */
+export function annotateLoops(roots: CallNode[]): CallNode[] {
+    const keyOf = (n: CallNode) => `${n.fn}@${n.source}`;
+
+    const foldInto = (target: CallNode, dup: CallNode) => {
+        // append steps, preserving per-line hit counts
+        for (const s of dup.steps) {
+            const existing = target.steps.find((t) => t.line === s.line);
+            if (existing) {
+                existing.hit += s.hit;
+                existing.vars = s.vars; existing.order = s.order; existing.heapUsed = s.heapUsed;
+                if (s.mutations) existing.mutations = s.mutations;
+                if (s.error) existing.error = s.error;
+            } else {
+                target.steps.push(s);
+            }
+        }
+        target.lastOrder = Math.max(target.lastOrder, dup.lastOrder);
+        if (dup.dataOut !== undefined) target.dataOut = dup.dataOut; // from the LAST iteration
+        if (dup.error && !target.error) target.error = dup.error;
+        // recompute heap peak / delta across merged steps
+        const heaps = target.steps.map((s) => s.heapUsed).filter((h): h is number => typeof h === 'number');
+        if (heaps.length) target.heapPeak = Math.max(...heaps);
+        if (heaps.length >= 2) target.heapDelta = heaps[heaps.length - 1] - heaps[0];
+    };
+
+    const collapse = (node: CallNode) => {
+        const merged: CallNode[] = [];
+        for (const child of node.children) {
+            const prev = merged[merged.length - 1];
+            if (prev && keyOf(prev) === keyOf(child)) {
+                // consecutive same-key sibling → fold into the surviving first node
+                prev.enteredCount = (prev.enteredCount ?? 1) + 1;
+                prev.aggregated = true;
+                foldInto(prev, child);
+            } else {
+                merged.push(child);
+            }
+        }
+        for (const child of merged) {
+            child.looped = (child.enteredCount ?? 1) > 1;
+            collapse(child);
+        }
+        node.children = merged;
+    };
+    roots.forEach(collapse);
+
+    // recursion: a node whose key matches an open ancestor is self-recursive.
+    // We mark BOTH the matching ancestor (top of the self-chain) and the nested
+    // self-child, and record how deep the self-nesting goes.
+    const markRecursion = (node: CallNode, ancestorNodes: CallNode[]) => {
+        const key = keyOf(node);
+        const firstIdx = ancestorNodes.findIndex((a) => keyOf(a) === key);
+        if (firstIdx !== -1) {
+            const depth = ancestorNodes.length - firstIdx; // levels of self-nesting
+            node.recursive = true;
+            node.recursionDepth = Math.max(node.recursionDepth ?? 0, depth);
+            const top = ancestorNodes[firstIdx];
+            top.recursive = true;
+            top.recursionDepth = Math.max(top.recursionDepth ?? 0, depth);
+        }
+        const next = [...ancestorNodes, node];
+        for (const child of node.children) markRecursion(child, next);
+    };
+    roots.forEach((r) => markRecursion(r, []));
+
+    return roots;
+}
+
 /** Build the whole tree from an ordered list of pauses (convenience for tests). */
 export function buildCallTree(pauses: PauseInput[]): CallNode[] {
     const b = new CallTreeBuilder();
     for (const p of pauses) b.push(p);
-    return b.getRoots();
+    return annotateLoops(b.getRoots());
 }

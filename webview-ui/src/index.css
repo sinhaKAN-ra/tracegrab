@@ -501,6 +501,7 @@ body, html, #root {
 .cm-n1 { background: rgba(248,113,113,0.2); color: #f87171; border-radius: 4px; padding: 0 6px; font-size: 10px; font-weight: 700; }
 .cm-dbcount { background: rgba(52,211,153,0.18); color: #34d399; border-radius: 10px; padding: 0 7px; font-size: 10px; }
 .cm-async { background: rgba(251,191,36,0.18); color: #fbbf24; border-radius: 4px; padding: 0 5px; font-size: 9px; }
+.cm-loop { background: rgba(251,191,36,0.18); color: #fbbf24; border-radius: 10px; padding: 0 7px; font-size: 10px; font-weight: 600; }
 .cm-here { color: var(--accent-color); font-size: 10px; font-weight: 700; }
 
 .cm-flow { font-size: 10.5px; padding: 2px 12px; font-family: monospace; }

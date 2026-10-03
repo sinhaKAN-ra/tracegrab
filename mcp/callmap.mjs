@@ -84,12 +84,87 @@ export function buildCallTree(pauses) {
             const count = (reentry.get(rk) ?? 0) + 1; reentry.set(rk, count);
             if (count >= 3 && node.layer === 'db') {
                 const sib = parent.children.find((c) => keyOf(c) === key);
-                if (sib) { sib.n1 = true; sib.enteredCount = count; }
+                if (sib) { sib.n1 = true; }
             }
         } else roots.push(node);
         stack.push(node);
         prevDepth = p.stackDepth;
     }
+    annotateLoops(roots);
+    return roots;
+}
+
+/**
+ * Post-build pass (pure). Collapses runs of CONSECUTIVE same-key children under
+ * a parent (a loop) and self-calls (recursion) into a single aggregated node,
+ * and marks loop / recursion metadata. The single writer of `enteredCount` /
+ * `looped`. Keep byte-for-byte in sync with callTree.ts.
+ */
+export function annotateLoops(roots) {
+    const keyOf = (n) => `${n.fn}@${n.source}`;
+
+    const foldInto = (target, dup) => {
+        // append steps, preserving per-line hit counts
+        for (const s of dup.steps) {
+            const existing = target.steps.find((t) => t.line === s.line);
+            if (existing) {
+                existing.hit += s.hit;
+                existing.vars = s.vars; existing.order = s.order; existing.heapUsed = s.heapUsed;
+                if (s.mutations) existing.mutations = s.mutations;
+                if (s.error) existing.error = s.error;
+            } else {
+                target.steps.push(s);
+            }
+        }
+        target.lastOrder = Math.max(target.lastOrder, dup.lastOrder);
+        if (dup.dataOut !== undefined) target.dataOut = dup.dataOut; // from the LAST iteration
+        if (dup.error && !target.error) target.error = dup.error;
+        // recompute heap peak / delta across merged steps
+        const heaps = target.steps.map((s) => s.heapUsed).filter((h) => typeof h === 'number');
+        if (heaps.length) target.heapPeak = Math.max(...heaps);
+        if (heaps.length >= 2) target.heapDelta = heaps[heaps.length - 1] - heaps[0];
+    };
+
+    const collapse = (node) => {
+        const merged = [];
+        for (const child of node.children) {
+            const prev = merged[merged.length - 1];
+            if (prev && keyOf(prev) === keyOf(child)) {
+                // consecutive same-key sibling → fold into the surviving first node
+                prev.enteredCount = (prev.enteredCount ?? 1) + 1;
+                prev.aggregated = true;
+                foldInto(prev, child);
+            } else {
+                merged.push(child);
+            }
+        }
+        for (const child of merged) {
+            child.looped = (child.enteredCount ?? 1) > 1;
+            collapse(child);
+        }
+        node.children = merged;
+    };
+    roots.forEach(collapse);
+
+    // recursion: a node whose key matches an open ancestor is self-recursive.
+    // We mark BOTH the matching ancestor (top of the self-chain) and the nested
+    // self-child, and record how deep the self-nesting goes.
+    const markRecursion = (node, ancestorNodes) => {
+        const key = keyOf(node);
+        const firstIdx = ancestorNodes.findIndex((a) => keyOf(a) === key);
+        if (firstIdx !== -1) {
+            const depth = ancestorNodes.length - firstIdx; // levels of self-nesting
+            node.recursive = true;
+            node.recursionDepth = Math.max(node.recursionDepth ?? 0, depth);
+            const top = ancestorNodes[firstIdx];
+            top.recursive = true;
+            top.recursionDepth = Math.max(top.recursionDepth ?? 0, depth);
+        }
+        const next = [...ancestorNodes, node];
+        for (const child of node.children) markRecursion(child, next);
+    };
+    roots.forEach((r) => markRecursion(r, []));
+
     return roots;
 }
 
@@ -115,11 +190,17 @@ export function toMermaidSequence(roots) {
     for (const n of declare) lines.push(`    participant ${alias(n)} as ${n.fn}`);
     const emit = (n) => {
         for (const c of n.children) {
+            const looped = c.looped || (c.enteredCount ?? 1) > 1;
+            const loopLabel = looped
+                ? `loop ${c.enteredCount}×${c.recursive ? ' (recursive)' : ''}`
+                : (c.recursive ? `loop (recursive, depth ${c.recursionDepth ?? 1})` : null);
+            if (loopLabel) lines.push(`    ${loopLabel}`);
             lines.push(`    ${alias(n)}->>${alias(c)}: call${c.dataIn ? ': ' + c.dataIn : ''}`);
             if (c.n1) lines.push(`    Note over ${alias(c)}: ⚠ N+1 ×${c.enteredCount}`);
             if (c.error) lines.push(`    Note over ${alias(c)}: ✗ ${c.error.message}`);
             emit(c);
             lines.push(`    ${alias(c)}-->>${alias(n)}${c.dataOut ? ': ' + c.dataOut : ': return'}`);
+            if (loopLabel) lines.push(`    end`);
         }
     };
     roots.forEach(emit);

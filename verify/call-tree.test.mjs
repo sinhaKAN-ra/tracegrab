@@ -99,8 +99,83 @@ assert(inferLayer('fetchIndexedRecords', 'DynamoUtils.ts') === 'db', 'db layer i
   assert(!!dbChild, 'N+1: db child present');
   assert(dbChild.n1 === true, 'N+1: db child flagged as N+1 (entered 4x in a loop)');
   assert(dbChild.enteredCount >= 3, 'N+1: entered count tracked');
+  // after annotateLoops the 4 consecutive findOne iterations collapse to ONE node
+  assert(svc.children.filter((c) => c.fn === 'findOne').length === 1, 'N+1: loop iterations collapsed to one node');
+  assert(dbChild.looped === true && dbChild.enteredCount === 4, 'N+1: collapsed node is looped with enteredCount 4');
   const loopStep = svc.steps.find((s) => s.line === 32);
   assert(loopStep && loopStep.hit === 4, 'N+1: loop line step hit 4x');
+}
+
+// ---- 9. loop collapse: a NON-db method entered N times consecutively ----
+{
+  const N = 3;
+  const seq = [P(1, F('getOrders', 'orders.svc.ts', 10), 1, [])];
+  let o = 2;
+  for (let i = 0; i < N; i++) {
+    seq.push(P(o++, F('findItem', 'items.repo.ts', 8), 2, [{ name: 'idx', value: String(i) }])); // loop body (self-called)
+    seq.push(P(o++, F('getOrders', 'orders.svc.ts', 12), 1, [])); // return to svc each iteration
+  }
+  const roots = buildCallTree(seq);
+  const svc = roots[0];
+  const items = svc.children.filter((c) => c.fn === 'findItem');
+  assert(items.length === 1, 'loop: N consecutive same-key children collapse to one node');
+  assert(items[0].enteredCount === N, `loop: enteredCount === ${N}`);
+  assert(items[0].looped === true, 'loop: looped === true for a repeated call');
+  assert(items[0].aggregated === true, 'loop: collapsed node marked aggregated');
+  assert(items[0].dataIn === 'idx=0', 'loop: dataIn kept from the first iteration');
+  const mm = toMermaidSequence(roots);
+  assert(mm.includes(`loop ${N}×`), `loop: mermaid contains a "loop ${N}×" block`);
+  assert(mm.includes('end'), 'loop: mermaid closes the loop with end');
+}
+
+// ---- 10. recursion: a method that calls itself as a nested child ----
+// (the builder treats consecutive identical frames as line-steps, so genuine
+//  recursion is a self-key reappearing DEEPER through an intermediate frame.)
+{
+  const roots = buildCallTree([
+    P(1, F('walk', 'tree.svc.ts', 3), 1, [{ name: 'depth', value: '0' }]),
+    P(2, F('visit', 'tree.svc.ts', 20), 2, []),            // intermediate hop
+    P(3, F('walk', 'tree.svc.ts', 3), 3, [{ name: 'depth', value: '1' }]), // deeper → nested self-call
+  ]);
+  const flat = [];
+  const walkTree = (n) => { flat.push(n); n.children.forEach(walkTree); };
+  roots.forEach(walkTree);
+  const anyRecursive = flat.filter((n) => n.recursive === true);
+  assert(anyRecursive.length >= 1, 'recursion: at least one node flagged recursive');
+  assert(anyRecursive.some((n) => (n.recursionDepth ?? 0) >= 1), 'recursion: recursionDepth recorded');
+  const mm = toMermaidSequence(roots);
+  assert(/loop[^\n]*recursive/.test(mm), 'recursion: mermaid annotates the recursive loop');
+}
+
+// ---- 11. once-called method has no loop block and looped === false ----
+{
+  const roots = buildCallTree([
+    P(1, F('getDashboard', 'd.ctrl.ts', 20), 1, []),
+    P(2, F('getProfile', 'p.svc.ts', 9), 2, []),
+    P(3, F('getDashboard', 'd.ctrl.ts', 28), 1, []),
+  ]);
+  const svc = roots[0].children[0];
+  assert(svc.looped === false || svc.looped === undefined, 'once-called: looped is false/undefined');
+  assert((svc.enteredCount ?? 1) === 1, 'once-called: enteredCount stays 1');
+  const mm = toMermaidSequence(roots);
+  assert(!/^\s*loop /m.test(mm), 'once-called: mermaid has NO loop block');
+}
+
+// ---- 12. interleaved same-key calls (not consecutive) are NOT merged ----
+{
+  const roots = buildCallTree([
+    P(1, F('svc', 's.svc.ts', 10), 1, []),
+    P(2, F('findA', 'a.repo.ts', 2), 2, []),
+    P(3, F('svc', 's.svc.ts', 11), 1, []),
+    P(4, F('findB', 'b.repo.ts', 2), 2, []),   // different call breaks the run
+    P(5, F('svc', 's.svc.ts', 12), 1, []),
+    P(6, F('findA', 'a.repo.ts', 2), 2, []),   // same key as #2 but NOT adjacent
+    P(7, F('svc', 's.svc.ts', 13), 1, []),
+  ]);
+  const svc = roots[0];
+  const findAs = svc.children.filter((c) => c.fn === 'findA');
+  assert(findAs.length === 2, 'interleaved: non-adjacent same-key calls stay separate');
+  assert(findAs.every((c) => !c.looped), 'interleaved: neither findA is marked looped');
 }
 
 // ---- 5. mutation diff: a var changing between steps in the same method ----
