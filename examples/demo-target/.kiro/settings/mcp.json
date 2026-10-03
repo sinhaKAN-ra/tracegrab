@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "tracegrab": {
+      "command": "node",
+      "args": [
+        "/Users/ksmac/karanDev/tracegrab/mcp/flow-mcp.mjs"
+      ],
+      "disabled": false,
+      "autoApprove": [
+        "get_debug_status",
+        "list_debug_configs",
+        "get_capabilities",
+        "get_call_map",
+        "get_pause_state",
+        "analyze_state"
+      ]
+    }
+  }
+}

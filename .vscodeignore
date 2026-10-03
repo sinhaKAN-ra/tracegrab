@@ -28,6 +28,7 @@ tsconfig.json
 docs/screenshots/**
 docs/TODO_PANEL_HEADLESS_COLLECT.md
 website/**
+examples/**
 CHANGELOG.md
 CONTRIBUTING.md
 SECURITY.md

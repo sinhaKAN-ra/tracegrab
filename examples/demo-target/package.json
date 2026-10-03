@@ -1,0 +1,13 @@
+{
+  "name": "tracegrab-demo-target",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Tiny Express API used to try out the Tracegrab extension.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

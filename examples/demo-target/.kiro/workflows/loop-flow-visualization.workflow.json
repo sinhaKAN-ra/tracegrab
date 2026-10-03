@@ -1,0 +1,58 @@
+{
+  "name": "loop-flow-visualization",
+  "inputs": {
+    "repo_dir": "string",
+    "worktree_path": "string",
+    "artifact_dir": "string",
+    "branch": "string"
+  },
+  "steps": [
+    {
+      "agent": "wf-coder",
+      "id": "setup",
+      "effortLevel": "low",
+      "type": "step",
+      "prompt": "Create a git worktree for an isolated feature branch and an artifact directory.\n\nFrom the repo at {{repo_dir}} run:\n  git -C {{repo_dir}} worktree add {{worktree_path}} -b {{branch}} mainline\n(If 'mainline' doesn't exist, use the repo's default branch — check `git -C {{repo_dir}} symbolic-ref refs/remotes/origin/HEAD` or fall back to `main`/`master`; report which you used.)\nThen create the artifact dir: mkdir -p {{artifact_dir}}\n\nConfirm the worktree exists at {{worktree_path}} and is on branch {{branch}}. Report the branch you based it on."
+    },
+    {
+      "agent": "wf-planner",
+      "id": "plan",
+      "type": "step",
+      "prompt": "Write an implementation plan to {{artifact_dir}}/plan.md for adding loop/recursion repeat-count visualization to the Tracegrab Call Map and Mermaid flow graph.\n\nALL work happens in the worktree at {{worktree_path}} (NOT the main checkout). The files, mirrored under the worktree, are:\n- {{worktree_path}}/mcp/callmap.mjs  (zero-dep ESM: buildCallTree, toMermaidSequence, summarizeTree, inferState)\n- {{worktree_path}}/webview-ui/src/callTree.ts  (behavior-identical mirror: class CallTreeBuilder, buildCallTree, toMermaidSequence, interfaces CallNode/StepLite)\n- {{worktree_path}}/webview-ui/src/CallMap.tsx  (React renderer: MethodBox nested view, ColumnsView, Legend, Mermaid button)\n- {{worktree_path}}/webview-ui/src/index.css  (styles: .cm-n1, .cm-hit, .cm-box, .cm-col-box, legend .cm-key.loop)\n- {{worktree_path}}/verify/call-tree.test.mjs  (unit test to extend)\n- {{worktree_path}}/src/esmImport.ts  (the native-import indirection; read it to understand the ESM invariant)\n- {{worktree_path}}/examples/demo-target/server.js  (demo: computeTotalForLoop line ~37, sumItemsRecursive line ~50)\n\nRequirements the plan must cover:\n1. In BOTH callmap.mjs and callTree.ts (kept logic-identical): when the same child method key (fn@source) is entered multiple consecutive times under the same parent (a loop), OR a method calls itself (recursion), collapse those repeats into ONE CallNode and record the true repeat count. Make enteredCount accurate for ALL repeated entries (today it's only set under the DB N+1 rule). Add a boolean `looped` (enteredCount>1) and a recursion indicator (e.g. `recursive` + depth/maxDepth). Keep existing N+1 semantics (n1 still set under DB + count>=3) — loop annotation is additive. Keep per-line StepLite.hit as-is. Document how an aggregated node represents dataIn (first iteration) / dataOut (last iteration) and that it's marked aggregated. Collapse only CONSECUTIVE same-key repeats so interleaved unrelated calls aren't merged.\n2. toMermaidSequence (both files, identical): wrap looped/repeated calls in a Mermaid `loop N×` block (call arrow + return arrow inside `loop N×` ... `end`). For recursion, annotate clearly (e.g. `loop N× (recursive)` or a self-note with depth). A method entered once stays a plain single arrow pair. Keep existing N+1/error Notes.\n3. CallMap.tsx + index.css: add a distinct neutral LOOP badge (e.g. `↻ ×N`, and `↻ ×N recursive` for recursion) on both MethodBox and ColumnsView boxes, visually distinct from the ⚠ N+1 warning. Match the existing legend `.cm-key.loop` ('×N loop'). Keep line-level `×hit`.\n4. Tests: extend {{worktree_path}}/verify/call-tree.test.mjs to assert (a) a method called N times in a loop collapses to one node with enteredCount===N and looped===true; (b) toMermaidSequence contains a `loop N×` block (assert on the string); (c) a recursive method is annotated with depth/count; (d) a once-called method has NO loop block and looped===false; (e) existing N+1 DB behavior still passes.\n\nHARD INVARIANTS to state in the plan:\n- callmap.mjs stays ESM and zero-dependency; it is imported at runtime via a native dynamic import() behind a Function-constructor indirection (src/esmImport.ts) because tsconfig uses module:commonjs. Do NOT add a plain `await import()` of callmap.mjs in any src/*.ts (it would downlevel to require() and fail on the .mjs).\n- callmap.mjs and callTree.ts MUST remain behavior-identical.\n\nBuild/verify commands (run from {{worktree_path}}): `npm run compile`, `npm run build:webview`, `node verify/call-tree.test.mjs`, and `npm test`.\n\nThis is a focused multi-file change; keep the plan concrete (file-by-file edits + the test cases)."
+    },
+    {
+      "stopCondition": {
+        "fileCheck": {
+          "path": "{{artifact_dir}}/review.json",
+          "value": "APPROVED",
+          "jsonPath": "verdict"
+        }
+      },
+      "maxIterations": 5,
+      "id": "build-loop",
+      "type": "repeat",
+      "onMaxIterations": "pause",
+      "steps": [
+        {
+          "agent": "wf-coder",
+          "id": "code",
+          "type": "step",
+          "prompt": "Implement the loop/recursion flow-graph feature in the worktree at {{worktree_path}} following {{artifact_dir}}/plan.md. On iterations after the first, FIRST read {{artifact_dir}}/review.json and {{artifact_dir}}/review.md and fix every finding.\n\nEdit these files (all under {{worktree_path}}):\n- mcp/callmap.mjs AND webview-ui/src/callTree.ts — keep them behavior-identical. Collapse CONSECUTIVE same-key child entries under a parent (loop) and self-calls (recursion) into one CallNode; make enteredCount the true repeat count for ALL repeats; add `looped` (enteredCount>1) and a recursion indicator (recursive + depth). Preserve existing N+1 (n1 under DB + count>=3) and per-line StepLite.hit. Aggregated node: dataIn from first iteration, dataOut from last, marked aggregated.\n- toMermaidSequence in BOTH files: emit a Mermaid `loop N×` ... `end` block around repeated/looped calls; annotate recursion (e.g. `loop N× (recursive)`); single-entry calls stay a plain arrow pair; keep N+1/error Notes.\n- webview-ui/src/CallMap.tsx + webview-ui/src/index.css: add a neutral `↻ ×N` loop badge (and `↻ ×N recursive`) on MethodBox and ColumnsView, distinct from ⚠ N+1; match legend .cm-key.loop. Keep line-level ×hit.\n- verify/call-tree.test.mjs: add the cases listed in the plan (loop collapse enteredCount===N & looped===true; Mermaid `loop N×` block present; recursion depth/count; once-called has no loop block & looped===false; existing N+1 still passes).\n\nDo NOT reintroduce a plain `await import()` of callmap.mjs in any src/*.ts — the ESM .mjs must stay loaded via the esmImport Function-indirection (module:commonjs would otherwise emit require() and break it). Keep callmap.mjs zero-dependency ESM.\n\nThen verify (from {{worktree_path}}): run `node verify/call-tree.test.mjs`, `npm run compile`, `npm run build:webview`, and `npm test`. Fix anything that fails until all are green.\n\nFinally sync the compiled output into the INSTALLED extension so a reloaded editor picks it up:\n  cp -R {{worktree_path}}/out/. /Users/ksmac/.kiro/extensions/tracegrab-karansinha.tracegrab-0.0.1/out/\n  cp {{worktree_path}}/mcp/callmap.mjs /Users/ksmac/.kiro/extensions/tracegrab-karansinha.tracegrab-0.0.1/mcp/callmap.mjs\nAlso sync the built webview assets to wherever the installed extension loads them from — inspect how CallMap/webview dist is referenced (e.g. webview-ui/dist) and copy the freshly built dist into the matching installed path. Report the exact paths you synced.\n\nSummarize what you changed per file and the test results."
+        },
+        {
+          "agent": "semantic_reviewer",
+          "id": "review",
+          "type": "step",
+          "prompt": "Review the loop/recursion flow-graph change in the worktree at {{worktree_path}} against {{artifact_dir}}/plan.md. Write your findings to {{artifact_dir}}/review.md, THEN write {{artifact_dir}}/review.json as {\"verdict\":\"APPROVED\"} if and only if every check below passes, otherwise {\"verdict\":\"CHANGES_REQUESTED\",\"findings\":[...]} with concrete, file+line findings.\n\nChecks (all must hold for APPROVED):\n1. mcp/callmap.mjs and webview-ui/src/callTree.ts are behavior-identical for the new loop/recursion logic (same collapse rule, same enteredCount/looped/recursive semantics, same toMermaidSequence `loop N×` output).\n2. A method called N times in a loop collapses to ONE node with enteredCount===N and looped===true; a once-called method has looped===false and NO loop block; recursion is annotated with depth/count. Existing N+1 (DB + count>=3) semantics preserved; per-line StepLite.hit preserved.\n3. toMermaidSequence emits a real `loop N×` ... `end` block for repeats (confirm by reading the code AND the test assertion on the emitted string).\n4. CallMap.tsx renders a neutral loop badge (↻ ×N / recursive) distinct from ⚠ N+1 on both nested and columns views; index.css styles it; legend matches.\n5. verify/call-tree.test.mjs actually asserts the new behavior (loop block in Mermaid string, enteredCount, recursion, once-called negative case) and the full `npm test`, `npm run compile`, and `npm run build:webview` pass — run them yourself from {{worktree_path}} to confirm, don't just read.\n6. ESM invariant preserved: no plain `await import()` of callmap.mjs in any src/*.ts; callmap.mjs stays zero-dep ESM loaded via esmImport.\n7. The installed-extension sync was performed (out/, mcp/callmap.mjs, and webview dist copied to /Users/ksmac/.kiro/extensions/tracegrab-karansinha.tracegrab-0.0.1/).\n\nAlways finish by sending a send_message with severity success and a one-line summary of the verdict (writing review.json is what actually gates the loop)."
+        }
+      ]
+    },
+    {
+      "agent": "wf-coder",
+      "id": "merge",
+      "effortLevel": "medium",
+      "type": "step",
+      "prompt": "The feature in worktree {{worktree_path}} (branch {{branch}}) is approved. Integrate it:\n1. From {{repo_dir}}: rebase {{branch}} onto mainline (or the default branch setup used), then fast-forward mainline to {{branch}} with --ff-only. Do NOT force-push; do NOT skip hooks. Resolve any rebase conflicts minimally and re-run `npm run compile` + `npm run build:webview` + `node verify/call-tree.test.mjs` from {{worktree_path}} to confirm still-green after the rebase.\n2. Re-sync the installed extension after the rebase: cp -R {{worktree_path}}/out/. /Users/ksmac/.kiro/extensions/tracegrab-karansinha.tracegrab-0.0.1/out/ ; cp {{worktree_path}}/mcp/callmap.mjs /Users/ksmac/.kiro/extensions/tracegrab-karansinha.tracegrab-0.0.1/mcp/callmap.mjs ; and the webview dist to its installed path.\n3. Do NOT remove the worktree (the orchestrator handles that). Report the final merged commit SHA on mainline and confirm the installed extension was re-synced."
+    }
+  ]
+}
