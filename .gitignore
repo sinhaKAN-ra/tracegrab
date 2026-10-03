@@ -39,3 +39,6 @@ docs/screenshots/*.png
 /examples/
 
 
+
+# Demo editor/agent local state — not part of the public demo
+examples/demo-target/.kiro/
