@@ -233,6 +233,30 @@ assert(inferLayer('fetchIndexedRecords', 'DynamoUtils.ts') === 'db', 'db layer i
   assert(mm.split('\n').some((l) => /loop 2×.*recursive/.test(l)), 'combined: recursive node renders "loop 2× (recursive)"');
 }
 
+// ---- 10e. line-loop vs recursion: SAME key at the SAME stackDepth is a plain
+// intra-method loop (×hit), NOT recursion. Proves the depth-change rule did not
+// promote same-depth same-line re-hits to recursion. ----
+{
+  const roots = buildCallTree([
+    P(1, F('tally', 'calc.svc.ts', 40), 2, [{ name: 'sum', value: '0' }]),   // enter
+    P(2, F('tally', 'calc.svc.ts', 42), 2, [{ name: 'sum', value: '1' }]),   // loop body line (same depth)
+    P(3, F('tally', 'calc.svc.ts', 42), 2, [{ name: 'sum', value: '3' }]),   // re-hit same line, same depth
+    P(4, F('tally', 'calc.svc.ts', 42), 2, [{ name: 'sum', value: '6' }]),   // re-hit again
+  ]);
+  const flat = [];
+  const walkTree = (n) => { flat.push(n); n.children.forEach(walkTree); };
+  roots.forEach(walkTree);
+  const tallies = flat.filter((n) => n.fn === 'tally');
+  assert(tallies.length === 1, 'line-loop: same-depth re-hits stay ONE node (not nested activations)');
+  const t = tallies[0];
+  assert(!t.recursive, 'line-loop: node is NOT flagged recursive');
+  assert((t.recursionDepth ?? undefined) === undefined, 'line-loop: no recursionDepth set');
+  const loopStep = t.steps.find((s) => s.line === 42);
+  assert(loopStep && loopStep.hit === 3, 'line-loop: the loop line records hit ×3 (a plain line loop)');
+  const mm = toMermaidSequence(roots);
+  assert(!/recursive/.test(mm), 'line-loop: mermaid has NO "(recursive)" block for a plain line loop');
+}
+
 // ---- 11. once-called method has no loop block and looped === false ----
 {
   const roots = buildCallTree([

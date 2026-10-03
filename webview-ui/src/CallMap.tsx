@@ -141,7 +141,8 @@ function MethodBox({
   const lastStep = node.steps[node.steps.length - 1];
   const openSource = () => {
     const line = lastStep?.line ?? node.steps[0]?.line ?? 1;
-    send({ kind: 'openSource', file: node.source, line });
+    // Prefer the absolute path (reliable open); fall back to the display basename.
+    send({ kind: 'openSource', file: node.path ?? node.source, line });
   };
 
   const capped = node.depth >= depthCap;
@@ -176,7 +177,7 @@ function MethodBox({
         <div className="cm-body">
           {node.steps.map((s) => (
             <div className={`cm-step ${s.error ? 'errored' : ''}`} key={`${node.id}-${s.line}`}
-              onClick={() => send({ kind: 'openSource', file: node.source, line: s.line })}>
+              onClick={() => send({ kind: 'openSource', file: node.path ?? node.source, line: s.line })}>
               <span className="cm-step-order">#{s.order}</span>
               <span className="cm-step-line">L{s.line}</span>
               {s.hit > 1 && <span className="cm-hit">×{s.hit}</span>}
@@ -230,7 +231,7 @@ function ColumnsView({ roots, send, activeId }: { roots: CallNode[]; send: Send;
             const from = callerFn(n);
             return (
               <div key={n.id} className={`cm-col-box ${layer} ${n.id === activeId ? 'active' : ''} ${n.error ? 'errored' : ''}`}
-                onClick={() => send({ kind: 'openSource', file: n.source, line: n.steps[0]?.line ?? 1 })}>
+                onClick={() => send({ kind: 'openSource', file: n.path ?? n.source, line: n.steps[0]?.line ?? 1 })}>
                 <div className="cm-col-fn">
                   <span className="cm-col-order">#{n.firstOrder}</span>{n.fn}
                   {n.n1 && <span className="cm-n1">⚠ N+1 ×{n.enteredCount}</span>}

@@ -8,6 +8,8 @@
 export interface FrameLite {
     name: string;
     source?: string;
+    /** absolute source path when known (DAP source.path), for click-to-open. */
+    path?: string;
     line: number;
 }
 export interface VarLite {
@@ -52,6 +54,8 @@ export interface CallNode {
     id: string;
     fn: string;
     source: string;
+    /** absolute source path when known, for reliable click-to-open. */
+    path?: string;
     layer: Layer;
     depth: number; // tree depth (call depth), independent of raw stack numbers
     steps: StepLite[];
@@ -79,6 +83,13 @@ export interface CallNode {
     recursive?: boolean;
     /** how deep the self-recursion nests (levels of the self-chain). */
     recursionDepth?: number;
+    /**
+     * Internal: the raw DAP stackDepth recorded for this activation. Used only
+     * by the builder to tell a same-key line-step (depth UNCHANGED) apart from a
+     * same-key self-recursive re-entry (depth CHANGED). Not part of the public
+     * tree projection. Kept in sync with mcp/callmap.mjs.
+     */
+    _depth?: number;
 }
 
 export type Transition =
@@ -125,23 +136,34 @@ export class CallTreeBuilder {
         const frame = p.frame ?? { name: 'step', line: 0 };
         const key = methodKey(frame);
         const cur = this.stack[this.stack.length - 1];
+        const sameKeyAsCur =
+            !!cur && methodKey({ name: cur.fn, source: cur.source, line: 0 }) === key;
 
-        // SAME method (top of our stack matches) → a line step or loop iteration
-        // — BUT only when NOT deeper. A same-key frame that is DEEPER (stackDepth
-        // grew) is a DIRECT self-recursive call; fall through to the ENTER path so
-        // it nests as a self-child instead of folding into one node as line-steps.
-        if (
-            cur &&
-            methodKey({ name: cur.fn, source: cur.source, line: 0 }) === key &&
-            !(p.stackDepth > this.prevDepth)
-        ) {
-            this.addStep(cur, frame, p);
+        // SAME method (top of our stack matches). Decide line-step vs a distinct
+        // self-recursive activation by whether the raw stackDepth CHANGED vs the
+        // depth recorded for this open activation:
+        //   - depth UNCHANGED (same activation) → a line step / loop line re-hit.
+        //   - adapter async stitch (asyncGap) → NOT recursion; the depth wobble is
+        //     an artifact of async/Promise frame truncation, so fold as a step.
+        //   - depth CHANGED (deeper OR shallower, |Δ|≥1) and NOT an async gap → a
+        //     real re-entry of the same self-recursive method; fall through to the
+        //     ENTER path so it nests as a self-child activation (which the
+        //     downstream collapseRecursion pass folds into one recursive node).
+        // A same-key same-depth repeat must therefore stay a plain line loop/×hit
+        // and never be promoted to recursion.
+        if (sameKeyAsCur && (p.asyncGap || p.stackDepth === (cur!._depth ?? this.prevDepth))) {
+            this.addStep(cur!, frame, p);
             this.prevDepth = p.stackDepth;
-            return { kind: 'step', node: cur };
+            return { kind: 'step', node: cur! };
         }
+        // Same key but the depth changed (and not async) → a self-recursive
+        // activation. Force it DOWN as a self-child of the current node so the
+        // self-chain forms regardless of whether the wobble went deeper or
+        // shallower; collapseRecursion then folds the chain into one node.
+        const selfRecurse = sameKeyAsCur;
 
         // DEEPER than before → a call (enter). Also treat "stack grew" as enter.
-        const deeper = p.stackDepth > this.prevDepth || this.stack.length === 0;
+        const deeper = selfRecurse || p.stackDepth > this.prevDepth || this.stack.length === 0;
         // Is this key an ancestor already open? Then it's a RETURN to it.
         const ancestorIdx = this.stack.findIndex(
             (n) => methodKey({ name: n.fn, source: n.source, line: 0 }) === key
@@ -166,6 +188,7 @@ export class CallTreeBuilder {
             id: `cn-${++this.idSeq}`,
             fn: frame.name,
             source: frame.source ?? '?',
+            path: frame.path,
             layer: inferLayer(frame.name, frame.source),
             depth: parent ? parent.depth + 1 : 0,
             steps: [],
@@ -215,6 +238,9 @@ export class CallTreeBuilder {
 
     private addStep(node: CallNode, frame: FrameLite, p: PauseInput) {
         node.lastOrder = p.order;
+        // Track the raw stack depth for THIS activation so a later same-key pause
+        // can tell a line-step (unchanged depth) from a self-recursive re-entry.
+        node._depth = p.stackDepth;
         // roll up heap + error at the node level
         if (typeof p.heapUsed === 'number') {
             node.heapPeak = Math.max(node.heapPeak ?? 0, p.heapUsed);

@@ -75,6 +75,57 @@ function computeDepth(stackResp, fullStackRequest) {
     assert(shortFull === 0, 'unit: no fallback request when below the truncation cap');
 }
 
+// ---- (B2) UNIT: NON-MONOTONIC real-trace shape still detects recursion ----
+// The live failure: a breakpoint sitting at the top of EVERY activation of a
+// self-recursive method (sumItemsRecursive@server.js, constant line 50) is hit
+// as the user steps across both the build-up and the unwind, so the recorded
+// stackDepth WOBBLES (e.g. 72,71,72) instead of increasing monotonically.
+// buildCallTree must still treat each same-key re-entry at a DIFFERENT depth as
+// a distinct activation and collapse the chain into ONE recursive node — NOT
+// fold the wobble into a single non-recursive node.
+const F = (name, source, line) => ({ name, source, line });
+const Pz = (order, frame, stackDepth, vars = []) => ({ order, frame, stackDepth, vars });
+{
+    // 3 activations, CONSTANT line 50, NON-MONOTONIC depth 72,71,72, under a caller.
+    const roots = buildCallTree([
+        Pz(1, F('computeTotalRecursive', 'server.js', 56), 10, []),
+        Pz(2, F('sumItemsRecursive', 'server.js', 50), 72, [{ name: 'index', value: '0' }]),
+        Pz(3, F('sumItemsRecursive', 'server.js', 50), 71, [{ name: 'index', value: '1' }]), // depth DROPPED
+        Pz(4, F('sumItemsRecursive', 'server.js', 50), 72, [{ name: 'index', value: '2' }]), // and ROSE again
+    ]);
+    const flat = [];
+    const walk = (n) => { flat.push(n); n.children.forEach(walk); };
+    roots.forEach(walk);
+    const recNodes = flat.filter((n) => n.fn === 'sumItemsRecursive');
+    assert(recNodes.length === 1, 'non-monotonic: wobbling self-chain (72,71,72) collapses to ONE node');
+    const rec = recNodes[0];
+    assert(rec.recursive === true, 'non-monotonic: node flagged recursive === true despite non-increasing depth');
+    assert(rec.enteredCount === 3, `non-monotonic: enteredCount === 3 distinct activations (got ${rec.enteredCount})`);
+    assert(typeof rec.recursionDepth === 'number' && rec.recursionDepth === 3,
+        `non-monotonic: recursionDepth === 3 (got ${rec.recursionDepth})`);
+    const mm = toMermaidSequence(roots);
+    assert(mm.includes('loop 3× (recursive)'), 'non-monotonic: mermaid contains "loop 3× (recursive)"');
+    assert(/participant .* as sumItemsRecursive/.test(mm), 'non-monotonic: mermaid declares the participant (not empty)');
+}
+{
+    // Longer unwind 72,71,72,71 → 4 activations, same assertions scale.
+    const roots = buildCallTree([
+        Pz(1, F('computeTotalRecursive', 'server.js', 56), 10, []),
+        Pz(2, F('sumItemsRecursive', 'server.js', 50), 72, [{ name: 'index', value: '0' }]),
+        Pz(3, F('sumItemsRecursive', 'server.js', 50), 71, [{ name: 'index', value: '1' }]),
+        Pz(4, F('sumItemsRecursive', 'server.js', 50), 72, [{ name: 'index', value: '2' }]),
+        Pz(5, F('sumItemsRecursive', 'server.js', 50), 71, [{ name: 'index', value: '3' }]),
+    ]);
+    const flat = [];
+    const walk = (n) => { flat.push(n); n.children.forEach(walk); };
+    roots.forEach(walk);
+    const rec = flat.filter((n) => n.fn === 'sumItemsRecursive');
+    assert(rec.length === 1, 'non-monotonic(4): longer wobble still collapses to ONE node');
+    assert(rec[0].recursive === true && rec[0].enteredCount === 4 && rec[0].recursionDepth === 4,
+        'non-monotonic(4): recursive with enteredCount/recursionDepth === 4');
+    assert(toMermaidSequence(roots).includes('loop 4× (recursive)'), 'non-monotonic(4): mermaid "loop 4× (recursive)"');
+}
+
 // ---- (A) REAL headless capture through the SAME recorder path ----
 const nodeAvail = availableDrivers().node;
 if (!nodeAvail.ok) {
