@@ -15,6 +15,7 @@ const flow = require(path.join(root, 'out', 'flowRunner.js'));
 const mock = require(path.join(root, 'out', 'mockStore.js'));
 const gen = require(path.join(root, 'out', 'testGenerator.js'));
 const bp = require(path.join(root, 'out', 'breakpointPath.js'));
+const osrc = require(path.join(root, 'out', 'openSourcePath.js'));
 
 let pass = 0, fail = 0;
 const assert = (c, m) => (c ? (pass++, console.log(`\u2713 ${m}`)) : (fail++, console.error(`\u2717 FAIL: ${m}`)));
@@ -147,6 +148,52 @@ assert(bp.resolveResumeThreadId(7, undefined) === 7, 'resume uses tracked thread
 assert(bp.resolveResumeThreadId(undefined, [{ id: 3 }, { id: 4 }]) === 3, 'resume falls back to first reported thread');
 assert(bp.resolveResumeThreadId(undefined, []) === undefined, 'resume returns undefined when nothing is known (never guesses 0)');
 assert(bp.resolveResumeThreadId(0, [{ id: 5 }]) === 0, 'resume honours a legitimately-tracked thread id of 0');
+
+// ---- openSourcePath.resolveOpenSourceTarget (click-to-open classification) ----
+{
+  const abs = osrc.resolveOpenSourceTarget('/Users/me/app/server.js', '/ws');
+  assert(abs.kind === 'absolute' && abs.fsPath === '/Users/me/app/server.js',
+    'resolve: absolute POSIX path opens directly (no glob)');
+
+  const win = osrc.resolveOpenSourceTarget('C:\\app\\server.js', '/ws');
+  assert(win.kind === 'absolute', 'resolve: absolute Windows path (drive letter) opens directly');
+
+  const rel = osrc.resolveOpenSourceTarget('src/server.js', '/ws');
+  assert(rel.kind === 'relative' && rel.fsPath === path.normalize('/ws/src/server.js'),
+    'resolve: relative path resolves against the workspace root');
+
+  const bare = osrc.resolveOpenSourceTarget('server.js', '/ws');
+  assert(bare.kind === 'glob' && bare.basename === 'server.js',
+    'resolve: a bare basename falls back to a workspace glob');
+
+  const empty = osrc.resolveOpenSourceTarget('', '/ws');
+  assert(empty.kind === 'unresolvable', 'resolve: empty file is unresolvable (caller shows info, not a no-op)');
+
+  const noRoot = osrc.resolveOpenSourceTarget('src/x.js', undefined);
+  assert(noRoot.kind === 'unresolvable', 'resolve: relative path with no workspace is unresolvable');
+}
+
+// ---- openSourcePath.parseWhere (Findings "where" -> {file,line}) ----
+{
+  const a = osrc.parseWhere('server.js:50');
+  assert(a && a.file === 'server.js' && a.line === 50, 'parseWhere: "server.js:50" -> {server.js, 50}');
+
+  const b = osrc.parseWhere('/Users/me/app/server.js:120');
+  assert(b && b.file === '/Users/me/app/server.js' && b.line === 120,
+    'parseWhere: absolute POSIX path keeps its path and extracts the line');
+
+  const c = osrc.parseWhere('C:\\app\\server.js:7');
+  assert(c && c.file === 'C:\\app\\server.js' && c.line === 7,
+    'parseWhere: absolute Windows path (drive-letter colon) extracts the LAST :line only');
+
+  const d = osrc.parseWhere('/Users/me/app/server.js');
+  assert(d && d.file === '/Users/me/app/server.js' && d.line === 1,
+    'parseWhere: file with no line defaults line to 1');
+
+  assert(osrc.parseWhere('process') === null, 'parseWhere: "process" is non-locatable -> null (caller shows info)');
+  assert(osrc.parseWhere('n/a') === null, 'parseWhere: "n/a" is non-locatable -> null');
+  assert(osrc.parseWhere('') === null, 'parseWhere: empty -> null');
+}
 
 console.log(`\n${fail ? 'RESULT: FAILURES ABOVE' : 'RESULT: ALL CHECKS PASSED'} (${pass} passed, ${fail} failed)`);
 process.exitCode = fail ? 1 : 0;

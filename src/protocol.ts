@@ -8,7 +8,14 @@
 export interface StackFrameDTO {
     id: number;
     name: string;
+    /** basename for display (e.g. "server.js"), from DAP source.name. */
     source?: string;
+    /**
+     * Absolute source path when the adapter provides it (DAP source.path).
+     * Used for reliable click-to-open; the webview sends this (not the lossy
+     * basename) so the host does not have to glob by filename.
+     */
+    path?: string;
     line: number;
 }
 

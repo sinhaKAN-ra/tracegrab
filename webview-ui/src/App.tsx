@@ -26,7 +26,7 @@ import { deriveOutcome } from './outcome';
 import { mergeBreakpoints, type UnifiedBpRow } from './breakpoints';
 
 // ---- Protocol (mirrors src/protocol.ts) ----
-type StackFrameDTO = { id: number; name: string; source?: string; line: number };
+type StackFrameDTO = { id: number; name: string; source?: string; path?: string; line: number };
 type VariableDTO = { name: string; value: string; type?: string; variablesReference: number; evaluateName?: string };
 type ScopeDTO = { name: string; variablesReference: number; variables: VariableDTO[] };
 type MockInjection = {
@@ -583,9 +583,26 @@ function App() {
     setCurrentFrame(capture.frame); setScopes(capture.scopes); setExpanded({});
     setContextTab('inspector');
   };
+  // Parse a Findings `where` into a locatable {file,line} and open it. Tolerates
+  // absolute paths whose drive letter contains a colon (C:\...), file-only
+  // wheres (line defaults to 1), and rejects non-file labels (process, n/a) up
+  // front — surfacing a visible toast instead of a silent no-op.
   const openFindingSource = (where: string) => {
-    const match = /^(.*):(\d+)$/.exec(where);
-    if (match) send({ kind: 'openSource', file: match[1], line: Number(match[2]) });
+    const w = (where ?? '').trim();
+    const notFile = (s: string) => ['process', 'n/a', 'na', 'unknown', ''].includes(s.toLowerCase());
+    // trailing ":<digits>" is the line; the file part may itself contain colons.
+    const m = /^(.*?):(\d+)$/.exec(w);
+    if (m && m[1].trim() && !notFile(m[1].trim())) {
+      const line = Number(m[2]);
+      send({ kind: 'openSource', file: m[1].trim(), line: line > 0 ? line : 1 });
+      return;
+    }
+    // no trailing line but it looks like a real file (has a separator or extension)
+    if (!notFile(w) && (w.includes('/') || w.includes('\\') || /\.[A-Za-z0-9]+$/.test(w))) {
+      send({ kind: 'openSource', file: w, line: 1 });
+      return;
+    }
+    flash(`No source location to open for "${where}".`);
   };
   const chooseDock = (tab: DockTab) => {
     if (dockOpen && dockTab === tab) setDockOpen(false);

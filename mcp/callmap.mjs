@@ -38,6 +38,9 @@ export function buildCallTree(pauses) {
     const keyOf = (n) => `${n.fn}@${n.source}`;
     const addStep = (node, frame, p) => {
         node.lastOrder = p.order;
+        // Track the raw stack depth for THIS activation so a later same-key pause
+        // can tell a line-step (unchanged depth) from a self-recursive re-entry.
+        node._depth = p.stackDepth;
         if (typeof p.heapUsed === 'number') node.heapPeak = Math.max(node.heapPeak ?? 0, p.heapUsed);
         if (p.exception) node.error = p.exception;
         const existing = node.steps.find((s) => s.line === frame.line);
@@ -58,12 +61,19 @@ export function buildCallTree(pauses) {
         const frame = p.frame ?? { name: 'step', line: 0 };
         const key = methodKey(frame);
         const cur = stack[stack.length - 1];
-        // SAME method as the open node: a line-step / loop line re-hit — BUT only
-        // when NOT deeper. A same-key frame that is DEEPER (stackDepth grew) is a
-        // DIRECT self-recursive call; fall through to the ENTER path so it nests
-        // as a self-child instead of folding into one node as line-steps.
-        if (cur && keyOf(cur) === key && !(p.stackDepth > prevDepth)) { addStep(cur, frame, p); prevDepth = p.stackDepth; continue; }
-        const deeper = p.stackDepth > prevDepth || stack.length === 0;
+        const sameKeyAsCur = !!cur && keyOf(cur) === key;
+        // SAME method as the open node. Decide line-step vs a distinct
+        // self-recursive activation by whether the raw stackDepth CHANGED vs the
+        // depth recorded for this open activation:
+        //   - depth UNCHANGED (same activation) → a line step / loop line re-hit.
+        //   - adapter async stitch (asyncGap) → NOT recursion; fold as a step.
+        //   - depth CHANGED (deeper OR shallower, |Δ|≥1) and NOT async → a real
+        //     re-entry of the same self-recursive method; fall through to ENTER so
+        //     it nests as a self-child (collapseRecursion folds the chain).
+        // A same-key same-depth repeat stays a plain line loop/×hit, never recursion.
+        if (sameKeyAsCur && (p.asyncGap || p.stackDepth === (cur._depth ?? prevDepth))) { addStep(cur, frame, p); prevDepth = p.stackDepth; continue; }
+        const selfRecurse = sameKeyAsCur;
+        const deeper = selfRecurse || p.stackDepth > prevDepth || stack.length === 0;
         const ancestorIdx = stack.findIndex((n) => keyOf(n) === key);
         if (ancestorIdx !== -1 && !deeper) {
             while (stack.length - 1 > ancestorIdx) { const popped = stack.pop(); popped.dataOut = inferOut(popped); }
@@ -74,7 +84,7 @@ export function buildCallTree(pauses) {
         let parent = cur;
         if (!deeper && stack.length > 0) { const popped = stack.pop(); popped.dataOut = inferOut(popped); parent = stack[stack.length - 1]; }
         const node = {
-            id: `cn-${++idSeq}`, fn: frame.name, source: frame.source ?? '?',
+            id: `cn-${++idSeq}`, fn: frame.name, source: frame.source ?? '?', path: frame.path,
             layer: inferLayer(frame.name, frame.source), depth: parent ? parent.depth + 1 : 0,
             steps: [], children: [], parentId: parent?.id, dbCalls: 0, enteredCount: 1,
             asyncBoundary: p.asyncGap, firstOrder: p.order, lastOrder: p.order,

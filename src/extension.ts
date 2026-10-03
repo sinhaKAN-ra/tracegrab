@@ -18,6 +18,7 @@ import { MockStore } from './mockStore.js';
 import { generateTest, type RecordedRun } from './testGenerator.js';
 import { BreakpointManager, bpKey } from './breakpointManager.js';
 import { resolveResumeThreadId } from './breakpointPath.js';
+import { resolveOpenSourceTarget } from './openSourcePath.js';
 import { PauseBridge } from './pauseBridge.js';
 import { redactValue } from './redact.js';
 import { LicenseService } from './licenseService.js';
@@ -401,6 +402,12 @@ export function activate(context: vscode.ExtensionContext) {
                         if (m.type === 'event' && m.event === 'stopped') {
                             const threadId: number | undefined = m.body?.threadId;
                             const reason: string = m.body?.reason ?? 'step';
+                            // Flap guard: note whether THIS session was already
+                            // paused BEFORE recording this stop, so a re-entrant
+                            // `stopped` on an already-paused session can't re-trigger
+                            // an auto-switch.
+                            const wasAlreadyPaused =
+                                sessionManager.getById(session.id)?.pausedThreadId !== undefined;
                             // Update THIS session's state, keyed by session.id, so a
                             // stop on session B cannot clobber a live pause on A.
                             sessionManager.recordStopped(session.id, threadId, new Date().toISOString());
@@ -408,7 +415,34 @@ export function activate(context: vscode.ExtensionContext) {
                             // otherSessions[i].paused stays fresh — design §2.4
                             // finding #5), gating only UI + capture on isDriven.
                             void sessionManager.touch();
-                            if (sessionManager.isDriven(session)) {
+
+                            // AUTO-DRIVE THE PAUSED CHILD: VS Code's JS debugger runs
+                            // the program in a CHILD pwa-node session while the parent
+                            // (adopted as driven) only supervises. When a tracked
+                            // NON-driven session pauses and it is a STRICT child of the
+                            // currently-driven session, and the driven session is not
+                            // itself paused, switch the driven pointer to the child so
+                            // the panel pauses on it with no manual use_session.
+                            // Guards: strict child only (never sideways/upward, so a
+                            // user-chosen session is never stolen); skip if already
+                            // driven (no flap); only on a genuine new pause.
+                            const drivenId = sessionManager.drivenSessionId();
+                            const isChildOfDriven =
+                                !!drivenId && session.parentSession?.id === drivenId;
+                            const drivenNotPaused =
+                                sessionManager.get()?.pausedThreadId === undefined;
+                            if (
+                                !sessionManager.isDriven(session) &&
+                                !wasAlreadyPaused &&
+                                isChildOfDriven &&
+                                drivenNotPaused
+                            ) {
+                                void (async () => {
+                                    await switchDrivenSession(session.id);
+                                    postToWebview({ kind: 'debugStatus', status: 'paused', threadId, reason });
+                                    await captureAndPublishState(session, threadId, reason);
+                                })();
+                            } else if (sessionManager.isDriven(session)) {
                                 postToWebview({ kind: 'debugStatus', status: 'paused', threadId, reason });
                                 void captureAndPublishState(session, threadId, reason);
                             }
@@ -1041,6 +1075,9 @@ async function captureAndPublishState(
             id: f.id,
             name: f.name,
             source: f.source?.name,
+            // Absolute path when the adapter provides it — carried so the webview
+            // can open the exact file without a fragile basename glob.
+            path: f.source?.path,
             line: f.line,
         }));
 
@@ -1740,30 +1777,43 @@ async function verifyContractCmd(name: string) {
     }
 }
 
-/** Open a source file at a line in the editor (Call Map click-to-source). */async function openSource(file: string, line: number) {
+/** Open a source file at a line in the editor (Call Map click-to-source). */
+async function openSource(file: string, line: number) {
     try {
         const root = workspaceRoot();
+        // Pure classification: absolute paths open directly, relative paths
+        // resolve against the workspace, bare basenames fall back to a glob, and
+        // anything unlocatable surfaces a visible info (never a silent no-op).
+        const target = resolveOpenSourceTarget(file, root);
         let uri: vscode.Uri | undefined;
-        if (file.startsWith('/') || /^[A-Za-z]:\\/.test(file)) {
-            uri = vscode.Uri.file(file);
-        } else if (file.includes('/')) {
-            uri = vscode.Uri.file(`${root}/${file}`);
-        } else {
-            const hits = await vscode.workspace.findFiles(`**/${file}`, '**/node_modules/**', 1);
-            uri = hits[0];
+        switch (target.kind) {
+            case 'absolute':
+            case 'relative':
+                uri = vscode.Uri.file(target.fsPath);
+                break;
+            case 'glob': {
+                const hits = await vscode.workspace.findFiles(`**/${target.basename}`, '**/node_modules/**', 1);
+                uri = hits[0];
+                break;
+            }
+            case 'unresolvable':
+                postToWebview({ kind: 'info', message: `Can't open source — ${target.reason}.` });
+                return;
         }
         if (!uri) {
-            postToWebview({ kind: 'info', message: `Could not locate ${file}` });
+            postToWebview({ kind: 'info', message: `Could not locate ${file} in the workspace.` });
             return;
         }
         const doc = await vscode.workspace.openTextDocument(uri);
         const pos = new vscode.Position(Math.max(0, line - 1), 0);
+        // Open BESIDE the active group so the file doesn't land under the panel.
         await vscode.window.showTextDocument(doc, {
             viewColumn: vscode.ViewColumn.One,
+            preserveFocus: false,
             selection: new vscode.Range(pos, pos),
         });
     } catch (err) {
-        postToWebview({ kind: 'info', message: `Open source failed: ${String(err)}` });
+        postToWebview({ kind: 'info', message: `Open source failed for ${file}: ${String(err)}` });
     }
 }
 
