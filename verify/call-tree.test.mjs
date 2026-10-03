@@ -15,7 +15,7 @@ execSync(
     `npx --yes tsc "${src}" --outDir "${outDir}" --module esnext --target es2022 --moduleResolution bundler`,
     { stdio: 'pipe' }
 );
-const { buildCallTree, inferLayer, diffVars, toMermaidSequence } = await import(path.join(outDir, 'callTree.js'));
+const { buildCallTree, inferLayer, diffVars, toMermaidSequence, summarizeTree } = await import(path.join(outDir, 'callTree.js'));
 
 let pass = 0, fail = 0;
 const assert = (c, m) => (c ? (pass++, console.log(`\u2713 ${m}`)) : (fail++, console.error(`\u2717 FAIL: ${m}`)));
@@ -145,6 +145,92 @@ assert(inferLayer('fetchIndexedRecords', 'DynamoUtils.ts') === 'db', 'db layer i
   assert(anyRecursive.some((n) => (n.recursionDepth ?? 0) >= 1), 'recursion: recursionDepth recorded');
   const mm = toMermaidSequence(roots);
   assert(/loop[^\n]*recursive/.test(mm), 'recursion: mermaid annotates the recursive loop');
+}
+
+// ---- 10a. DIRECT self-recursion (the real sumItemsRecursive shape) ----
+// Self-nested, INCREASING stackDepth, same key, NO intermediate frame.
+// Order A1 has 2 items → 3 activations (index 0, 1, 2-base case).
+{
+  const roots = buildCallTree([
+    P(1, F('computeTotalRecursive', 'server.js', 56), 1, []),
+    P(2, F('sumItemsRecursive', 'server.js', 48), 2, [{ name: 'index', value: '0' }]),
+    P(3, F('sumItemsRecursive', 'server.js', 48), 3, [{ name: 'index', value: '1' }]), // deeper → self-call
+    P(4, F('sumItemsRecursive', 'server.js', 48), 4, [{ name: 'index', value: '2' }]), // deeper → self-call (base)
+  ]);
+  const flat = [];
+  const walkTree = (n) => { flat.push(n); n.children.forEach(walkTree); };
+  roots.forEach(walkTree);
+  const recNodes = flat.filter((n) => n.fn === 'sumItemsRecursive');
+  assert(recNodes.length === 1, 'direct-recursion: self-chain collapses to ONE node (not 3 nested)');
+  const rec = recNodes[0];
+  assert(rec.recursive === true, 'direct-recursion: node flagged recursive === true');
+  assert(rec.enteredCount === 3, 'direct-recursion: enteredCount === 3 (number of self-activations)');
+  assert(rec.recursionDepth === 3, 'direct-recursion: recursionDepth === 3');
+  const mm = toMermaidSequence(roots);
+  assert(/loop\s+3×.*recursive/i.test(mm), 'direct-recursion: mermaid emits "loop 3× (recursive)" marker');
+}
+
+// ---- 10b. base case / NO recursion (order A2, empty items) ----
+// sumItemsRecursive entered once, hits base case immediately — not recursive.
+{
+  const roots = buildCallTree([
+    P(1, F('computeTotalRecursive', 'server.js', 56), 1, []),
+    P(2, F('sumItemsRecursive', 'server.js', 48), 2, [{ name: 'index', value: '0' }]),
+    P(3, F('computeTotalRecursive', 'server.js', 57), 1, []), // returned, base case only
+  ]);
+  const rec = roots[0].children.find((c) => c.fn === 'sumItemsRecursive');
+  assert(!!rec, 'base-case: sumItemsRecursive present');
+  assert(!rec.recursive, 'base-case: recursive is falsy (single activation)');
+  assert((rec.enteredCount ?? 1) === 1, 'base-case: enteredCount === 1');
+  const mm = toMermaidSequence(roots);
+  assert(!/recursive/.test(mm), 'base-case: mermaid has NO recursion marker');
+}
+
+// ---- 10c. summarizeTree exposes loop/recursion flags ----
+{
+  const roots = buildCallTree([
+    P(1, F('computeTotalRecursive', 'server.js', 56), 1, []),
+    P(2, F('sumItemsRecursive', 'server.js', 48), 2, [{ name: 'index', value: '0' }]),
+    P(3, F('sumItemsRecursive', 'server.js', 48), 3, [{ name: 'index', value: '1' }]),
+    P(4, F('sumItemsRecursive', 'server.js', 48), 4, [{ name: 'index', value: '2' }]),
+  ]);
+  const summary = summarizeTree(roots);
+  const entry = summary.methodList.find((m) => m.fn === 'sumItemsRecursive');
+  assert(!!entry, 'summary: recursive method present in methodList');
+  assert(entry.recursive === true, 'summary: methodList entry has recursive === true');
+  assert(entry.recursionDepth === 3, 'summary: methodList entry has recursionDepth === 3');
+  assert(entry.entered === 3, 'summary: methodList entry has entered === 3');
+  assert('looped' in entry, 'summary: methodList entry carries the looped field');
+}
+
+// ---- 10d. a tree that both LOOPS (sibling) and RECURSES (separately) ----
+// getOrders fans out to a sibling loop of findItem (non-recursive), then a
+// separate self-recursive sumItemsRecursive — the two markers must stay distinct.
+{
+  const roots = buildCallTree([
+    P(1, F('getOrders', 'orders.svc.ts', 10), 1, []),
+    // sibling loop: findItem entered 3× consecutively (returns to svc each time)
+    P(2, F('findItem', 'items.repo.ts', 8), 2, [{ name: 'i', value: '0' }]),
+    P(3, F('getOrders', 'orders.svc.ts', 12), 1, []),
+    P(4, F('findItem', 'items.repo.ts', 8), 2, [{ name: 'i', value: '1' }]),
+    P(5, F('getOrders', 'orders.svc.ts', 12), 1, []),
+    P(6, F('findItem', 'items.repo.ts', 8), 2, [{ name: 'i', value: '2' }]),
+    P(7, F('getOrders', 'orders.svc.ts', 13), 1, []),
+    // separate self-recursion
+    P(8, F('sumItemsRecursive', 'server.js', 48), 2, [{ name: 'index', value: '0' }]),
+    P(9, F('sumItemsRecursive', 'server.js', 48), 3, [{ name: 'index', value: '1' }]),
+  ]);
+  const svc = roots[0];
+  const loopNode = svc.children.find((c) => c.fn === 'findItem');
+  const recNode = svc.children.find((c) => c.fn === 'sumItemsRecursive');
+  assert(loopNode && loopNode.looped === true && !loopNode.recursive, 'combined: loop node is looped, not recursive');
+  assert(loopNode.enteredCount === 3, 'combined: loop node enteredCount === 3');
+  assert(recNode && recNode.recursive === true, 'combined: recursive node is recursive');
+  assert(recNode.enteredCount === 2 && recNode.recursionDepth === 2, 'combined: recursive node depth/entered === 2');
+  const mm = toMermaidSequence(roots);
+  assert(/loop 3×(?!.*recursive)/.test(mm) || mm.split('\n').some((l) => /loop 3×/.test(l) && !/recursive/.test(l)),
+    'combined: sibling loop renders "loop 3×" WITHOUT (recursive)');
+  assert(mm.split('\n').some((l) => /loop 2×.*recursive/.test(l)), 'combined: recursive node renders "loop 2× (recursive)"');
 }
 
 // ---- 11. once-called method has no loop block and looped === false ----

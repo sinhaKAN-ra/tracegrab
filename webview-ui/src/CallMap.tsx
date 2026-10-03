@@ -76,6 +76,7 @@ function Legend({ layout, onToggle }: { layout: 'nested' | 'columns'; onToggle: 
       <span className="cm-key call">↓ call</span>
       <span className="cm-key ret">↑ return</span>
       <span className="cm-key loop">↻ ×N loop</span>
+      <span className="cm-key recursive">↻ ×N recursive</span>
       <span className="cm-key n1">⚠ N+1</span>
       <button className="cm-layout-btn" onClick={onToggle}>
         {layout === 'nested' ? 'Layout: Nested ▾' : 'Layout: Columns ▾'}
@@ -154,7 +155,8 @@ function MethodBox({
         <span className={`cm-tag ${node.layer}`}>{LAYER_LABEL[node.layer]}</span>
         <span className="cm-fn" onClick={openSource} title="Open in editor">{node.fn}</span>
         {node.n1 && <span className="cm-n1" title="Possible N+1: called many times in a loop">⚠ N+1 ×{node.enteredCount}</span>}
-        {node.looped && <span className="cm-loop" title="Called N times in a loop">↻ ×{node.enteredCount}{node.recursive ? ' recursive' : ''}</span>}
+        {node.recursive && <span className="cm-recursive" title={`Self-recursive: ${node.recursionDepth ?? node.enteredCount} nested activations`}>↻ ×{node.recursionDepth ?? node.enteredCount} recursive</span>}
+        {node.looped && !node.recursive && <span className="cm-loop" title="Called N times in a loop">↻ ×{node.enteredCount}</span>}
         {node.dbCalls > 0 && <span className="cm-dbcount">{node.dbCalls} DB</span>}
         {node.error && <span className="cm-err" title={node.error.message}>✗ {short(node.error.type ?? 'throw', 16)}</span>}
         {typeof node.heapDelta === 'number' && node.heapDelta !== 0 && (
@@ -232,7 +234,8 @@ function ColumnsView({ roots, send, activeId }: { roots: CallNode[]; send: Send;
                 <div className="cm-col-fn">
                   <span className="cm-col-order">#{n.firstOrder}</span>{n.fn}
                   {n.n1 && <span className="cm-n1">⚠ N+1 ×{n.enteredCount}</span>}
-                  {n.looped && <span className="cm-loop" title="Called N times in a loop">↻ ×{n.enteredCount}{n.recursive ? ' recursive' : ''}</span>}
+                  {n.recursive && <span className="cm-recursive" title={`Self-recursive: ${n.recursionDepth ?? n.enteredCount} nested activations`}>↻ ×{n.recursionDepth ?? n.enteredCount} recursive</span>}
+                  {n.looped && !n.recursive && <span className="cm-loop" title="Called N times in a loop">↻ ×{n.enteredCount}</span>}
                   {n.dbCalls > 0 && <span className="cm-dbcount">{n.dbCalls} DB</span>}
                   {n.error && <span className="cm-err">✗</span>}
                 </div>

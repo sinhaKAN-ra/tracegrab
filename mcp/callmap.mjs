@@ -58,7 +58,11 @@ export function buildCallTree(pauses) {
         const frame = p.frame ?? { name: 'step', line: 0 };
         const key = methodKey(frame);
         const cur = stack[stack.length - 1];
-        if (cur && keyOf(cur) === key) { addStep(cur, frame, p); prevDepth = p.stackDepth; continue; }
+        // SAME method as the open node: a line-step / loop line re-hit — BUT only
+        // when NOT deeper. A same-key frame that is DEEPER (stackDepth grew) is a
+        // DIRECT self-recursive call; fall through to the ENTER path so it nests
+        // as a self-child instead of folding into one node as line-steps.
+        if (cur && keyOf(cur) === key && !(p.stackDepth > prevDepth)) { addStep(cur, frame, p); prevDepth = p.stackDepth; continue; }
         const deeper = p.stackDepth > prevDepth || stack.length === 0;
         const ancestorIdx = stack.findIndex((n) => keyOf(n) === key);
         if (ancestorIdx !== -1 && !deeper) {
@@ -146,9 +150,44 @@ export function annotateLoops(roots) {
     };
     roots.forEach(collapse);
 
-    // recursion: a node whose key matches an open ancestor is self-recursive.
-    // We mark BOTH the matching ancestor (top of the self-chain) and the nested
-    // self-child, and record how deep the self-nesting goes.
+    // DIRECT self-recursion: after the builder fix a method that calls ITSELF
+    // nests as a same-key child chain (A → A → A …). Fold that self-chain
+    // upward into the TOP node so the map shows ONE node with a repeat/depth
+    // count — a `loop N× (recursive)` block — not N nested arrow pairs.
+    // N (recursionDepth / enteredCount) = number of self-activations in the
+    // chain (A→A→A ⇒ 3). The folded self-children are removed from the tree.
+    const collapseRecursion = (node) => {
+        const selfKey = keyOf(node);
+        let selfChild = node.children.find((c) => keyOf(c) === selfKey);
+        if (selfChild) {
+            // Walk the LINEAR self-chain node → self → self …, folding each
+            // self-activation up into `node`. Steps merge; non-self children of
+            // each activation are lifted onto `node` so sub-calls aren't lost.
+            node.children = node.children.filter((c) => c !== selfChild);
+            let depth = 1; // this node is activation #1
+            while (selfChild) {
+                depth += 1;
+                foldInto(node, selfChild);
+                const nextSelf = selfChild.children.find((c) => keyOf(c) === selfKey);
+                for (const gc of selfChild.children) {
+                    if (gc === nextSelf) continue; // next activation — stay on the chain
+                    gc.parentId = node.id;
+                    node.children.push(gc);
+                }
+                selfChild = nextSelf;
+            }
+            node.enteredCount = depth;
+            node.recursive = true;
+            node.recursionDepth = depth;
+        }
+        for (const child of node.children) collapseRecursion(child);
+    };
+    roots.forEach(collapseRecursion);
+
+    // INDIRECT recursion: a node whose key matches an open ancestor THROUGH an
+    // intermediate frame (A → B → A) can't fold (the intervening B breaks the
+    // self-chain), so flag it in place. We mark BOTH the matching ancestor (top
+    // of the self-chain) and the nested self-child, and record the nesting depth.
     const markRecursion = (node, ancestorNodes) => {
         const key = keyOf(node);
         const firstIdx = ancestorNodes.findIndex((a) => keyOf(a) === key);
@@ -213,6 +252,7 @@ export function toMermaidSequence(roots) {
         flat.push({
             fn: n.fn, layer: n.layer, source: n.source, order: n.firstOrder,
             dbCalls: n.dbCalls, n1: !!n.n1, entered: n.enteredCount,
+            looped: !!n.looped, recursive: !!n.recursive, recursionDepth: n.recursionDepth,
             error: n.error, heapDeltaBytes: n.heapDelta,
             dataIn: n.dataIn, dataOut: n.dataOut,
             mutations: n.steps.flatMap((s) => s.mutations ?? []),

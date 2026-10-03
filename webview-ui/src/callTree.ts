@@ -126,8 +126,15 @@ export class CallTreeBuilder {
         const key = methodKey(frame);
         const cur = this.stack[this.stack.length - 1];
 
-        // SAME method (top of our stack matches) → a line step or loop iteration.
-        if (cur && methodKey({ name: cur.fn, source: cur.source, line: 0 }) === key) {
+        // SAME method (top of our stack matches) → a line step or loop iteration
+        // — BUT only when NOT deeper. A same-key frame that is DEEPER (stackDepth
+        // grew) is a DIRECT self-recursive call; fall through to the ENTER path so
+        // it nests as a self-child instead of folding into one node as line-steps.
+        if (
+            cur &&
+            methodKey({ name: cur.fn, source: cur.source, line: 0 }) === key &&
+            !(p.stackDepth > this.prevDepth)
+        ) {
             this.addStep(cur, frame, p);
             this.prevDepth = p.stackDepth;
             return { kind: 'step', node: cur };
@@ -369,9 +376,44 @@ export function annotateLoops(roots: CallNode[]): CallNode[] {
     };
     roots.forEach(collapse);
 
-    // recursion: a node whose key matches an open ancestor is self-recursive.
-    // We mark BOTH the matching ancestor (top of the self-chain) and the nested
-    // self-child, and record how deep the self-nesting goes.
+    // DIRECT self-recursion: after the builder fix a method that calls ITSELF
+    // nests as a same-key child chain (A → A → A …). Fold that self-chain
+    // upward into the TOP node so the map shows ONE node with a repeat/depth
+    // count — a `loop N× (recursive)` block — not N nested arrow pairs.
+    // N (recursionDepth / enteredCount) = number of self-activations in the
+    // chain (A→A→A ⇒ 3). The folded self-children are removed from the tree.
+    const collapseRecursion = (node: CallNode) => {
+        const selfKey = keyOf(node);
+        let selfChild = node.children.find((c) => keyOf(c) === selfKey);
+        if (selfChild) {
+            // Walk the LINEAR self-chain node → self → self …, folding each
+            // self-activation up into `node`. Steps merge; non-self children of
+            // each activation are lifted onto `node` so sub-calls aren't lost.
+            node.children = node.children.filter((c) => c !== selfChild);
+            let depth = 1; // this node is activation #1
+            while (selfChild) {
+                depth += 1;
+                foldInto(node, selfChild);
+                const nextSelf: CallNode | undefined = selfChild.children.find((c) => keyOf(c) === selfKey);
+                for (const gc of selfChild.children) {
+                    if (gc === nextSelf) continue; // next activation — stay on the chain
+                    gc.parentId = node.id;
+                    node.children.push(gc);
+                }
+                selfChild = nextSelf;
+            }
+            node.enteredCount = depth;
+            node.recursive = true;
+            node.recursionDepth = depth;
+        }
+        for (const child of node.children) collapseRecursion(child);
+    };
+    roots.forEach(collapseRecursion);
+
+    // INDIRECT recursion: a node whose key matches an open ancestor THROUGH an
+    // intermediate frame (A → B → A) can't fold (the intervening B breaks the
+    // self-chain), so flag it in place. We mark BOTH the matching ancestor (top
+    // of the self-chain) and the nested self-child, and record the nesting depth.
     const markRecursion = (node: CallNode, ancestorNodes: CallNode[]) => {
         const key = keyOf(node);
         const firstIdx = ancestorNodes.findIndex((a) => keyOf(a) === key);
@@ -396,4 +438,35 @@ export function buildCallTree(pauses: PauseInput[]): CallNode[] {
     const b = new CallTreeBuilder();
     for (const p of pauses) b.push(p);
     return annotateLoops(b.getRoots());
+}
+
+/**
+ * Flatten the tree into an agent-friendly summary (layers, N+1, loops,
+ * recursion, errors, heap). Keep the methodList projection byte-for-byte in
+ * sync with mcp/callmap.mjs::summarizeTree so the MCP get_call_map summary and
+ * the webview see the same fields.
+ */
+export function summarizeTree(roots: CallNode[]) {
+    const flat: Array<Record<string, unknown>> = [];
+    const walk = (n: CallNode) => {
+        flat.push({
+            fn: n.fn, layer: n.layer, source: n.source, order: n.firstOrder,
+            dbCalls: n.dbCalls, n1: !!n.n1, entered: n.enteredCount,
+            looped: !!n.looped, recursive: !!n.recursive, recursionDepth: n.recursionDepth,
+            error: n.error, heapDeltaBytes: n.heapDelta,
+            dataIn: n.dataIn, dataOut: n.dataOut,
+            mutations: n.steps.flatMap((s) => s.mutations ?? []),
+        });
+        n.children.forEach(walk);
+    };
+    roots.forEach(walk);
+    return {
+        methods: flat.length,
+        n1Suspects: flat.filter((m) => m.n1).map((m) => `${m.fn} (${m.source}) ×${m.entered}`),
+        errors: flat.filter((m) => m.error).map((m) => {
+            const e = m.error as { type?: string; message?: string } | undefined;
+            return `${m.fn}: ${e?.type ?? ''} ${e?.message}`;
+        }),
+        methodList: flat,
+    };
 }
