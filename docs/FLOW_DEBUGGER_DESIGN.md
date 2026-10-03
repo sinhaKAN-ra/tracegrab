@@ -141,7 +141,7 @@ A single JSON shape is the hub:
     "astar.ts:42:nodesVisited": "99"
   },
   "boundaryMocks": [               // intercept an external/DB call, return this
-    { "match": "db.getClaim", "returns": { "id": "C1", "status": "OPEN" } }
+    { "match": "src/db/OrderRepository#findById", "returns": { "id": "A1", "status": "open" } }
   ],
   "requestBody": { /* seed request */ }
 }

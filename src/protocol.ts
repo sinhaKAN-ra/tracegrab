@@ -127,7 +127,7 @@ export interface CallResult {
 
 // ---- Mock store (shared JSON: hand-written | imported | captured) ----
 export interface BoundaryMock {
-    /** Substring/regex of the function/call being intercepted, e.g. "db.getClaim". */
+    /** Explicit target of the call being intercepted, e.g. "src/db/OrderRepository#findById". */
     match: string;
     returns: unknown;
 }
