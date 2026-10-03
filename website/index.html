@@ -44,6 +44,7 @@
   .topbar{position:sticky;top:0;z-index:50;background:rgba(5,7,10,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
   .topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:48px}
   .brand{display:flex;align-items:center;gap:9px;font-weight:600;color:var(--bright);font-size:14px}
+  .brand .logo{width:20px;height:20px;border-radius:5px;display:block;flex:0 0 auto}
   .brand .dot3{display:flex;gap:5px}
   .brand .dot3 span{width:9px;height:9px;border-radius:50%;display:block}
   .brand .dot3 span:nth-child(1){background:#f85149}
@@ -131,12 +132,14 @@
   <div class="wrap">
     <a class="brand" href="#top">
       <span class="dot3"><span></span><span></span><span></span></span>
+      <img class="logo" src="/assets/icon.svg" alt="tracegrab logo" width="20" height="20" />
       tracegrab <span class="path">~/debug</span>
     </a>
     <div class="topnav">
       <a href="#why">why</a>
       <a href="#mcp">mcp tools</a>
       <a href="#install">install</a>
+      <a href="#start">start</a>
       <a href="#contributing">contributing</a>
       <a class="star" href="https://github.com/sinhaKAN-ra/tracegrab">★ star on github</a>
     </div>
@@ -211,7 +214,7 @@
     <div class="grid" style="margin-top:18px">
       <div class="card"><h3>auto_debug()</h3><p>One call: set breakpoints, drive the scenario, build the call map, run every detector, return a verdict. The whole investigation, one round trip.</p></div>
       <div class="card"><h3>get_pause_state() → debug_step()</h3><p>Granular control when auto isn't enough: read a live pause, inspect scope, mutate a variable to force a branch, step, continue. Read → decide → act.</p></div>
-      <div class="card"><h3>start_headless_session()</h3><p>No VS Code required. The same steer loop runs in CI, a container, or a pure-agent box. Node always; Python via <code>debugpy</code>.</p></div>
+      <div class="card"><h3>start_headless_session()</h3><p>No VS Code, no panel — the same steer loop runs in CI, a container, or a pure-agent box. Tested with <b>Node</b> and <b>Python</b> (<code>debugpy</code>) only; other languages are unverified. <a href="#headless">more →</a></p></div>
       <div class="card"><h3>save_trace() / compare_traces()</h3><p>Baseline a run, diff a later one — REGRESSION / CHANGED / EQUIVALENT — plus behavior contracts an agent (or CI) can gate on.</p></div>
       <div class="card"><h3>get_call_map() / get_memory_timeline()</h3><p>Structured runtime truth: nested calls, boundary data, heap deltas, variable values, Mermaid export. Something to reason over, not a screenshot.</p></div>
       <div class="card"><h3>get_capabilities() / get_audit_log()</h3><p>The agent probes what's possible before committing. Every live mutation is logged. Secrets redacted, propose-then-confirm by default.</p></div>
@@ -226,6 +229,10 @@
     <h2>What the agent (and you) actually see</h2>
     <p class="lede">Captured from the real built webview — verdict first, evidence around it.</p>
     <div class="gallery">
+      <figure class="shot">
+        <a href="assets/phase5-editer.png" target="_blank" rel="noopener"><img src="assets/phase5-editer.png" alt="Full editor view: source with breakpoints beside the debugger panel showing the LOOKS OK verdict, call map, memory timeline and live inspector" loading="lazy"></a>
+        <figcaption class="cap"><h3>what the agent actually sees</h3><p>Source + breakpoints on the left; the live panel on the right — verdict, call map, memory, and the paused scope the agent reads over MCP.</p></figcaption>
+      </figure>
       <figure class="shot">
         <a href="assets/callmap.png" target="_blank" rel="noopener"><img src="assets/callmap.png" alt="Run-centric workspace with verdict, findings, call map and inspector" loading="lazy"></a>
         <figcaption class="cap"><h3>verdict + call map</h3><p>Ranked findings, nested call tree, run history, live inspector — in one view.</p></figcaption>
@@ -288,12 +295,55 @@
   <div class="wrap">
     <p class="tag-line">// first run</p>
     <h2>Getting started</h2>
-    <p class="lede">Three steps from installed extension to a live, agent-readable trace.</p>
+    <p class="lede">New here? Read the one concept below first — it's the thing that trips
+      everyone up — then follow the five steps against the bundled demo app.</p>
+
+    <p class="tag-line" style="margin-top:4px">// the one concept to get first: two ways to drive</p>
+    <table class="cmp" style="margin-bottom:14px">
+      <tr><th></th><th>panel (manual)</th><th>ai agent (mcp)</th></tr>
+      <tr><td>who drives</td><td class="no">you, clicking in the panel</td><td class="ok">the agent, via MCP tools</td></tr>
+      <tr><td>set breakpoints</td><td class="no">click the editor gutter</td><td class="ok">ask it ("break at the recursion line")</td></tr>
+      <tr><td>fire the request</td><td class="no">run <code>curl</code> yourself</td><td class="ok">ask it to fire the call</td></tr>
+      <tr><td>step / inspect</td><td class="no">buttons in the panel</td><td class="ok">it steps and reports back</td></tr>
+    </table>
+    <p class="lede" style="margin-bottom:28px">These aren't two installs — it's the <b>same debug
+      session</b>. The agent can take over a session you started, and you watch it live in the panel
+      at the same time. A first-time user won't know this, so start with the panel path, then hand it
+      to the agent in step 5.</p>
+
     <ol class="steps">
-      <li><b>F5</b> your API in VS Code so it's running under the debugger — or skip the IDE entirely with <code>start_headless_session()</code> (no F5, works in CI/containers).</li>
-      <li>Open the panel — Command Palette → <b>Tracegrab: Start</b> — and set breakpoints from the gutter or the panel.</li>
-      <li>Hit the endpoint yourself, or hand <code>mcp/flow-mcp.mjs</code> to your agent and let it call <code>auto_debug()</code>. Watch the call map and verdict fill in live.</li>
+      <li><b>Install prerequisites (once).</b> For the Node demo: <code>cd examples/demo-target &amp;&amp; npm install</code> — Node's debugger is built in, nothing else needed. For the Python demo: <code>debugpy</code> must live in the interpreter your launch config uses; on Homebrew/PEP&nbsp;668 Python make a venv — <code>python3 -m venv .venv</code> then <code>.venv/bin/python -m pip install debugpy</code> — and point the Python config at <code>.venv/bin/python</code>.</li>
+      <li><b>Start the app the right way</b> — this is the #1 mistake. Open <code>examples/demo-target</code>, then Command&nbsp;Palette (<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>) → <b>Tracegrab: Start Debugging (launch + panel)</b> → pick <b>Debug demo-target (Node)</b>. Do <b>not</b> run <code>node server.js</code> in a terminal, don't F5 a non-Tracegrab config, and don't use plain <b>Tracegrab: Start</b> (that opens the panel only, it doesn't launch the debugger). Only this command creates a session Tracegrab owns — start it any other way and the panel can look "running" while Tracegrab and the agent can't actually see or drive it.</li>
+      <li><b>Confirm it attached.</b> The terminal prints <code>Debugger attached</code> and <code>demo-target listening on http://127.0.0.1:3000</code>, the status bar turns orange, and the panel opens. The panel is <b>empty until a request pauses</b> — that's expected, not a bug.</li>
+      <li><b>Set a breakpoint and fire a request.</b> Click the gutter in <code>server.js</code> — good lines: <b>37</b> (for-loop body), <b>50</b> (recursive self-call), <b>40</b> (discount branch). Then <code>curl http://127.0.0.1:3000/orders/A1/loop</code>. The curl <b>hanging is the success signal</b> — it's paused at your breakpoint and the call map + inspector fill in. Continue in the panel to finish the request. Try <code>/orders/A1/recursive</code> (recursion as a ↻&nbsp;×N node), <code>/orders/A2/loop</code> (empty items, total&nbsp;0), or <code>/orders/ZZZ/loop</code> (404, no pause — the guard short-circuits).</li>
+      <li><b>(Optional) Let the AI agent take over.</b> With the session running, you don't have to do steps 3–4 by hand. Ask the agent in chat: <i>"Set a breakpoint at the recursion line in server.js, call /orders/A1/recursive, then show me the call map."</i> It drives the <b>same live session</b> — you watch the pauses in your panel while it works. It auto-takes-over the child session that actually pauses, so no manual session switch is needed.</li>
     </ol>
+
+    <p class="tag-line" style="margin-top:30px">// if something's off (the exact traps we hit)</p>
+    <ol class="steps">
+      <li><b>Panel says "running" but the agent says NOT RUNNING.</b> The server was started the wrong way (terminal, auto-attach, or <b>Tracegrab: Start</b>). Stop it and relaunch via <b>Start Debugging (launch + panel)</b>.</li>
+      <li><b>Port already in use (EADDRINUSE).</b> An old process is holding <code>3000</code> (or <code>3001</code> for Python). Stop it first.</li>
+      <li><b>The request returns immediately instead of hanging.</b> No breakpoint is set, or it's on a line that didn't run (e.g. a 404 path). Set one on a line that executes.</li>
+      <li><b>Python panel stays empty.</b> <code>debugpy</code> isn't in the interpreter the config launched — install it in that exact environment, or point the config at your <code>.venv</code>.</li>
+      <li><b>Just updated the extension?</b> Run <b>Developer: Reload Window</b> so the new build loads before you test.</li>
+    </ol>
+  </div>
+</section>
+
+<section id="headless">
+  <div class="wrap">
+    <p class="tag-line">// no ide, no panel</p>
+    <h2>Headless mode: MCP without the window</h2>
+    <p class="lede">The panel and MCP are two halves of the same tool. In the normal flow the
+      <b>panel</b> (the extension's UI) is what you watch, and <b>MCP</b> is how the agent drives —
+      together they give you the automation. In <b>headless</b> mode there is no panel: no VS Code,
+      no window to look at. The agent still sets breakpoints, fires calls, reads pauses, and returns a
+      verdict entirely over MCP — which is what makes it work in CI, a container, or a pure-agent box.</p>
+    <div class="grid">
+      <div class="card"><h3>&gt; panel = eyes, mcp = hands</h3><p>With the IDE, you see the live call map and inspector while the agent (or you) drives. Headless keeps the hands and drops the eyes — same session model, no UI.</p></div>
+      <div class="card"><h3>&gt; start it with one call</h3><p><code>start_headless_session()</code> launches the target under the debugger with no F5 and no panel. The rest of the MCP loop — breakpoints, scenario, pauses, verdict — is identical to the IDE path.</p></div>
+      <div class="card"><h3>&gt; tested languages</h3><p>Verified against <b>Node</b> and <b>Python</b> (<code>debugpy</code>) only. Other languages are <b>not verified</b> — they may work via their DAP adapter, but we haven't tested them and don't claim support.</p></div>
+    </div>
   </div>
 </section>
 
@@ -326,5 +376,11 @@
     built to be forked, extended, and driven by agents — not us.
   </div>
 </footer>
+
+<!-- Vercel Web Analytics (static-site injection; equivalent to @vercel/analytics) -->
+<script>
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
 </body>
 </html>
