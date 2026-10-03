@@ -78,7 +78,7 @@
     "flow-run": "node cli/flow-run.mjs",
     "demo": "npm run build:webview && node verify/make-demo.mjs --open",
     "demo:shot": "npm run build:webview && node verify/make-demo.mjs --shot",
-    "test": "npm run lint:boundaries && npm run compile && node verify/host-logic.test.mjs && node verify/call-tree.test.mjs && node verify/safety.test.mjs && node verify/flowtrace.test.mjs && node verify/behavioral-diff.test.mjs && node verify/contracts.test.mjs && node verify/outcome.test.mjs && node verify/breakpoints.test.mjs && node verify/session-status.test.mjs && node cli/collector.test.mjs && node cli/collector-interactive.test.mjs && node cli/headless-session.test.mjs && node verify/headless-mcp.test.mjs",
+    "test": "npm run lint:boundaries && npm run compile && node verify/host-logic.test.mjs && node verify/call-tree.test.mjs && node verify/recursion-depth.test.mjs && node verify/safety.test.mjs && node verify/flowtrace.test.mjs && node verify/behavioral-diff.test.mjs && node verify/contracts.test.mjs && node verify/outcome.test.mjs && node verify/breakpoints.test.mjs && node verify/session-status.test.mjs && node cli/collector.test.mjs && node cli/collector-interactive.test.mjs && node cli/headless-session.test.mjs && node verify/headless-mcp.test.mjs",
     "flow-verify": "node cli/flow-verify.mjs"
   },
   "devDependencies": {

@@ -1016,6 +1016,27 @@ async function captureAndPublishState(
             levels: 20,
         });
         const rawFrames: any[] = stackTrace?.stackFrames ?? [];
+
+        // Real call-stack depth: the `levels: 20` request above TRUNCATES the
+        // returned frames, so `rawFrames.length` saturates at 20 and recursion
+        // deeper than that stops increasing — which collapses genuine recursion
+        // into a single non-recursive node in the Call Map. DAP's stackTrace
+        // response carries `totalFrames` = the TRUE total even when stackFrames
+        // is truncated, so prefer it. Some adapters omit totalFrames; only then,
+        // and only when we actually hit the truncation cap, pay for ONE extra
+        // full-stack request (no `levels`) to read the real depth.
+        const totalFrames = stackTrace?.totalFrames;
+        let stackDepth = (typeof totalFrames === 'number' && totalFrames >= rawFrames.length)
+            ? totalFrames
+            : rawFrames.length;
+        if (!(typeof totalFrames === 'number' && totalFrames >= rawFrames.length) && rawFrames.length === 20) {
+            try {
+                const fullResp = await session.customRequest('stackTrace', { threadId, startFrame: 0 });
+                stackDepth = fullResp?.stackFrames?.length ?? rawFrames.length;
+            } catch {
+                /* adapter refused a full stack — keep the truncated length */
+            }
+        }
         const stack: StackFrameDTO[] = rawFrames.map((f) => ({
             id: f.id,
             name: f.name,
@@ -1120,6 +1141,7 @@ async function captureAndPublishState(
                 callId: currentCallId,
                 frame: stack[0] ?? null,
                 stack,
+                stackDepth,
                 scopes,
                 dbMode: st?.dbMode ?? 'real',
                 memory,
