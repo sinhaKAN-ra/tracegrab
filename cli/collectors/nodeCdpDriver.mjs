@@ -167,6 +167,10 @@ export class NodeCdpDriver extends EventEmitter {
                 source: url.replace(/^file:\/\//, ''),
                 line: (top.location?.lineNumber ?? 0) + 1,
             } : null,
+            // CDP's Debugger.paused delivers the COMPLETE call stack (p.callFrames
+            // is not truncated like a DAP stackTrace levels cap), so this is the
+            // true depth — no totalFrames/full re-request needed here. Do NOT
+            // "make it consistent" with the DAP drivers by capping it.
             stackDepth: frames.length || 1,
             vars, heapUsed, exception,
         };

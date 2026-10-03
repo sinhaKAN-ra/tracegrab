@@ -12,6 +12,14 @@ export interface PauseSnapshot {
     callId?: string;
     frame: StackFrameDTO | null;
     stack: StackFrameDTO[];
+    /**
+     * The REAL call-stack frame count at this pause. The `stack` array is
+     * capped (levels:20) for the panel, so its length saturates and defeats
+     * recursion detection; the caller computes the true depth from DAP
+     * `totalFrames` (or a full-stack re-request) and passes it here. When a
+     * caller omits it we fall back to `stack.length` to preserve old behavior.
+     */
+    stackDepth?: number;
     scopes: ScopeDTO[];
     /** true while the debugger is paused here and waiting for a command. */
     waiting: boolean;
@@ -292,7 +300,7 @@ export class PauseBridge {
                 // Additive: readers that ignore it are unaffected.
                 sessionId: this.sessionId,
                 runId: full.runId, pauseId: full.pauseId, callId: full.callId,
-                frame: full.frame, stackDepth: full.stack?.length ?? 1,
+                frame: full.frame, stackDepth: full.stackDepth ?? full.stack?.length ?? 1,
                 vars: topVars, dbMode: full.dbMode,
                 heapUsed: full.memory?.heapUsed, exception: full.exception,
             }) + '\n', 'utf8');

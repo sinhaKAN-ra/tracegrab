@@ -121,7 +121,13 @@ export class PythonDapDriver extends EventEmitter {
         const threadId = body?.threadId ?? 1;
         this.#lastThreadId = threadId;
         let stack = [];
-        try { stack = (await this.#dap.request('stackTrace', { threadId, startFrame: 0, levels: 20 }))?.stackFrames ?? []; }
+        // Capture the WHOLE response (not just .stackFrames) so `totalFrames` is
+        // readable: the `levels: 20` cap TRUNCATES the frame array, so its length
+        // saturates at 20 and recursion deeper than that stops increasing —
+        // defeating recursion detection in the Call Map. See captureState depth
+        // handling below.
+        let stackResp;
+        try { stackResp = await this.#dap.request('stackTrace', { threadId, startFrame: 0, levels: 20 }); stack = stackResp?.stackFrames ?? []; }
         catch { /* mid-teardown */ }
         const top = stack[0];
         let vars = [];
@@ -160,10 +166,25 @@ export class PythonDapDriver extends EventEmitter {
             } catch { /* none */ }
         }
 
+        // Real depth: prefer DAP `totalFrames` (true total even when stackFrames
+        // is truncated by `levels`). When the adapter omits it AND we hit the
+        // truncation cap, pay for ONE full-stack request (no `levels`) to read
+        // the real depth; otherwise fall back to the truncated length.
+        const totalFrames = stackResp?.totalFrames;
+        let stackDepth = (typeof totalFrames === 'number' && totalFrames >= stack.length)
+            ? totalFrames
+            : stack.length;
+        if (!(typeof totalFrames === 'number' && totalFrames >= stack.length) && stack.length === 20) {
+            try {
+                const full = await this.#dap.request('stackTrace', { threadId, startFrame: 0 });
+                stackDepth = full?.stackFrames?.length ?? stack.length;
+            } catch { /* adapter refused — keep truncated length */ }
+        }
+
         return {
             reason: body?.reason ?? 'breakpoint',
             frame: top ? { name: top.name, source: top.source?.path ?? top.source?.name, line: top.line } : null,
-            stackDepth: stack.length || 1,
+            stackDepth: stackDepth || 1,
             vars, heapUsed, exception,
         };
     }
