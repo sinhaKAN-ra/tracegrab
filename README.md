@@ -8,17 +8,19 @@ behavior before the change ships.
 > VS Code extension + agent-native MCP server + headless CLI. Free and open source
 > for every developer; see [TELEMETRY.md](TELEMETRY.md) for our privacy stance.
 
-<!-- Demo: record a 30-60s GIF of (set breakpoint → run scenario → Call Map + verdict)
-     and drop it at media/brand/demo.gif, then this line renders it at the top. -->
-![Tracegrab in action](media/brand/demo.gif)
+<!-- Demo GIF goes here once recorded: set breakpoint → run scenario → Call Map + verdict.
+     Drop it at media/brand/demo.gif and add: ![Tracegrab in action](media/brand/demo.gif) -->
 
 ## Install
 
-- **VS Code Marketplace:** search **Tracegrab** in the Extensions view, or install from the
-  [Marketplace listing](https://marketplace.visualstudio.com/) <!-- TODO: real URL once published -->.
-- **From source:** `git clone` this repo, `npm install`, then press **F5** to launch the
-  Extension Development Host.
-- **Agent / MCP + CLI:** see [Usage](#usage) and [AGENTS.md](AGENTS.md).
+- **Cursor / Kiro / Windsurf / VSCodium:** search **Tracegrab** in the Extensions view and
+  click Install (these read the [Open VSX](https://open-vsx.org/extension/TraceGrab-KaranSinha/tracegrab)
+  registry), or run `cursor --install-extension TraceGrab-KaranSinha.tracegrab`.
+- **VS Code:** install the `.vsix` from [GitHub Releases](https://github.com/sinhaKAN-ra/tracegrab/releases)
+  via **Extensions → `···` → Install from VSIX** (VS Code Marketplace listing coming soon).
+- **Agent / MCP + CLI:** wire the MCP server (`mcp/flow-mcp.mjs`) into your agent — see
+  [Usage](#usage) and [AGENTS.md](AGENTS.md). Without this the agent has no tools to drive the debugger.
+- **From source:** `git clone`, `npm install`, then press **F5** for the Extension Development Host.
 
 
 ## What it does
@@ -42,8 +44,10 @@ behavior before the change ships.
   boundary mocks so you can test a handler with no database.
 - **Unit-test round trip** — import an existing test's fixtures as a mock set, and
   **generate a test** (Jest for Node today) from a recorded run.
-- **Multi-language** — the UI speaks DAP, which every major language debugger
-  implements, so the same panels work against Node, Python, Java, Go, etc.
+- **Language support** — the UI speaks DAP (the Debug Adapter Protocol), so the same
+  panels work in principle against any language with a debug adapter. **Tested and
+  verified with Node and Python (`debugpy`) only** — other languages (Java, Go, …) may
+  work via their DAP adapter but are **not verified**, and we don't claim support yet.
 
 See `docs/FLOW_DEBUGGER_DESIGN.md` for the architecture, build phases, and the
 **agent scenario + breakpoints JSON schema**. For the setup pattern, a pre-flight

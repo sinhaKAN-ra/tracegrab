@@ -273,21 +273,44 @@
   <div class="wrap">
     <p class="tag-line">// get running</p>
     <h2>How to install</h2>
-    <p class="lede">Not on the VS Code Marketplace yet — the extension ships as a built <code>.vsix</code>
-      you grab from the repo and install directly. Works in VS Code, Cursor, and Windsurf (all three
-      read the same <code>.vsix</code> format).</p>
+    <p class="lede">Tracegrab is <b>two pieces that work together</b>: the <b>extension</b> (the panel you
+      watch) and the <b>MCP server</b> (how your AI agent drives it). You install both — skip the MCP
+      step and the agent has no tools, which is the single most common reason people get stuck.</p>
 
     <div class="grid" style="margin-bottom:18px">
-      <div class="card"><h3>&gt; where to find it</h3><p>GitHub repo: <a href="https://github.com/sinhaKAN-ra/tracegrab/releases">github.com/sinhaKAN-ra/tracegrab/releases</a> once a release is cut, or build your own <code>.vsix</code> from <code>main</code> with the commands below — same artifact either way.</p></div>
-      <div class="card"><h3>&gt; what you need</h3><p>Node.js 18+, VS Code / Cursor / Windsurf, and the <a href="https://github.com/microsoft/vscode-vsce">vsce</a> packager (pulled in automatically via <code>npx</code> below — no global install).</p></div>
+      <div class="card"><h3>&gt; where to get it</h3><p>Published on both registries — install straight from your editor:<br><b>VS Code</b> → <a href="https://marketplace.visualstudio.com/items?itemName=TraceGrab-KaranSinha.tracegrab">VS&nbsp;Code Marketplace</a>.<br><b>Cursor / Kiro / Windsurf / VSCodium</b> → <a href="https://open-vsx.org/extension/TraceGrab-KaranSinha/tracegrab">Open&nbsp;VSX</a>.</p></div>
+      <div class="card"><h3>&gt; what you need</h3><p>Node.js 18+, an MCP-capable editor (VS Code / Cursor / Kiro / Windsurf) <b>or</b> any MCP agent. Nothing to build — install from the marketplace.</p></div>
     </div>
 
-    <pre style="background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:16px 18px;font-size:12.8px;line-height:1.85;overflow-x:auto"><span class="p">$</span> <span class="cmd">git clone</span> https://github.com/sinhaKAN-ra/tracegrab <span class="c-d">&amp;&amp;</span> <span class="cmd">cd</span> tracegrab
-<span class="p">$</span> <span class="cmd">npm install</span>
-<span class="p">$</span> <span class="cmd">npm run build</span>        <span class="c-d"># webview + host</span>
-<span class="p">$</span> <span class="cmd">npx vsce package</span>     <span class="c-d"># → tracegrab-0.0.1.vsix</span>
-<span class="p">$</span> <span class="cmd">code --install-extension</span> tracegrab-0.0.1.vsix   <span class="c-d"># or: cursor --install-extension ...</span></pre>
-    <p style="color:var(--dim);font-size:12.3px;margin-top:12px">Already have the <code>.vsix</code> from a release? Skip straight to the last line, or use <b>Extensions panel → <code>···</code> → Install from VSIX</b> if you'd rather click than type.</p>
+    <p class="tag-line" style="margin-top:4px">// step 1 — install the extension (the panel)</p>
+    <p style="color:var(--dim);font-size:13px;margin:0 0 10px;max-width:680px">Open your editor's Extensions panel, search <b>“tracegrab”</b>, and click Install —
+      <b>VS Code</b> pulls from the Marketplace, <b>Cursor / Kiro / Windsurf / VSCodium</b> from Open VSX.
+      Or from the command line:</p>
+    <pre style="background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:14px 18px;font-size:12.8px;line-height:1.85;overflow-x:auto"><span class="p">$</span> <span class="cmd">code --install-extension</span> TraceGrab-KaranSinha.tracegrab        <span class="c-d"># VS Code</span>
+<span class="p">$</span> <span class="cmd">cursor --install-extension</span> TraceGrab-KaranSinha.tracegrab      <span class="c-d"># or: kiro / windsurf / codium</span></pre>
+    <p style="color:var(--dim);font-size:12.3px;margin:12px 0 0">Prefer the raw artifact or building from source? <code>.vsix</code> on
+      <a href="https://github.com/sinhaKAN-ra/tracegrab/releases">GitHub Releases</a>, build steps in
+      <a href="#contributing">Contributing</a>. After installing, run <b>Developer: Reload Window</b>.</p>
+
+    <p class="tag-line" style="margin-top:28px">// step 2 — wire up MCP (give the agent the tools) <b style="color:var(--amber)">← don't skip this</b></p>
+    <p style="color:var(--dim);font-size:13px;margin:0 0 10px;max-width:680px">The extension alone gives you the <b>panel</b>. For an AI agent to take control — set breakpoints,
+      fire the request, step and read the pause for you — it needs the <b>31 MCP tools</b>. Point your
+      agent's MCP config at the server <code>flow-mcp.mjs</code>, with <code>FLOW_WORKSPACE</code> set to
+      the project you want to debug, using an absolute path. (Clone the repo, or locate it inside the
+      installed extension folder — <code>mcp/flow-mcp.mjs</code> ships with it.)</p>
+    <div class="install-pre">
+      <span class="copy-hint">~/.cursor/mcp.json · Kiro: mcp.json · or your agent's MCP config</span>
+      <pre style="background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:16px 18px;overflow-x:auto;font-size:12.5px;line-height:1.8">{ <span class="c-d">"mcpServers"</span>: { <span class="c-d">"tracegrab"</span>: {
+  <span class="c-d">"command"</span>: <span class="c-g">"node"</span>,
+  <span class="c-d">"args"</span>: [<span class="c-g">"/ABS/PATH/tracegrab/mcp/flow-mcp.mjs"</span>],
+  <span class="c-d">"env"</span>: { <span class="c-d">"FLOW_WORKSPACE"</span>: <span class="c-g">"/ABS/PATH/to/the/repo/you/debug"</span> }
+} } }</pre>
+    </div>
+    <p style="color:var(--dim);font-size:12.3px;margin:10px 0 0"><b>Confirm the agent actually has the tools before you rely on it</b> — this is the step whose absence
+      leaves you stuck. After saving the config, <b>restart/reload your editor</b> so it respawns the MCP
+      server, then ask the agent: <i>"call <code>get_debug_status</code>"</i>. If it answers with a status
+      verdict, the tools are live. If it says the tool doesn't exist, the config isn't being read —
+      re-check the absolute path to <code>flow-mcp.mjs</code> and that your editor reloaded.</p>
   </div>
 </section>
 
@@ -308,20 +331,23 @@
     </table>
     <p class="lede" style="margin-bottom:28px">These aren't two installs — it's the <b>same debug
       session</b>. The agent can take over a session you started, and you watch it live in the panel
-      at the same time. A first-time user won't know this, so start with the panel path, then hand it
-      to the agent in step 5.</p>
+      at the same time. A first-time user won't know this, so the steps below walk the panel path first,
+      then hand the whole thing to the agent at the end — <b>that handoff is the point of the tool</b>,
+      so it needs the MCP setup from install step&nbsp;2 done first.</p>
 
     <ol class="steps">
       <li><b>Install prerequisites (once).</b> For the Node demo: <code>cd examples/demo-target &amp;&amp; npm install</code> — Node's debugger is built in, nothing else needed. For the Python demo: <code>debugpy</code> must live in the interpreter your launch config uses; on Homebrew/PEP&nbsp;668 Python make a venv — <code>python3 -m venv .venv</code> then <code>.venv/bin/python -m pip install debugpy</code> — and point the Python config at <code>.venv/bin/python</code>.</li>
+      <li><b>Confirm your agent has the MCP tools</b> (if you did the MCP setup in install step&nbsp;2). Ask the agent <i>"call <code>get_debug_status</code>"</i>. A status verdict back = tools live, you're ready for the agent path. "Tool doesn't exist" = the MCP config isn't wired — fix that first, or the agent can't drive anything and you'll be stuck. Panel-only (no agent)? Skip this.</li>
       <li><b>Start the app the right way</b> — this is the #1 mistake. Open <code>examples/demo-target</code>, then Command&nbsp;Palette (<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>) → <b>Tracegrab: Start Debugging (launch + panel)</b> → pick <b>Debug demo-target (Node)</b>. Do <b>not</b> run <code>node server.js</code> in a terminal, don't F5 a non-Tracegrab config, and don't use plain <b>Tracegrab: Start</b> (that opens the panel only, it doesn't launch the debugger). Only this command creates a session Tracegrab owns — start it any other way and the panel can look "running" while Tracegrab and the agent can't actually see or drive it.</li>
       <li><b>Confirm it attached.</b> The terminal prints <code>Debugger attached</code> and <code>demo-target listening on http://127.0.0.1:3000</code>, the status bar turns orange, and the panel opens. The panel is <b>empty until a request pauses</b> — that's expected, not a bug.</li>
-      <li><b>Set a breakpoint and fire a request.</b> Click the gutter in <code>server.js</code> — good lines: <b>37</b> (for-loop body), <b>50</b> (recursive self-call), <b>40</b> (discount branch). Then <code>curl http://127.0.0.1:3000/orders/A1/loop</code>. The curl <b>hanging is the success signal</b> — it's paused at your breakpoint and the call map + inspector fill in. Continue in the panel to finish the request. Try <code>/orders/A1/recursive</code> (recursion as a ↻&nbsp;×N node), <code>/orders/A2/loop</code> (empty items, total&nbsp;0), or <code>/orders/ZZZ/loop</code> (404, no pause — the guard short-circuits).</li>
-      <li><b>(Optional) Let the AI agent take over.</b> With the session running, you don't have to do steps 3–4 by hand. Ask the agent in chat: <i>"Set a breakpoint at the recursion line in server.js, call /orders/A1/recursive, then show me the call map."</i> It drives the <b>same live session</b> — you watch the pauses in your panel while it works. It auto-takes-over the child session that actually pauses, so no manual session switch is needed.</li>
+      <li><b>Set a breakpoint, then fire a request at the local server.</b> Click the gutter in <code>server.js</code> — good lines: <b>37</b> (for-loop body), <b>50</b> (recursive self-call), <b>40</b> (discount branch). The request can come from <b>anything that can hit <code>http://127.0.0.1:3000</code></b> — the server runs on your own machine, so it's a plain local HTTP call: <code>curl http://127.0.0.1:3000/orders/A1/loop</code>, a <b>Postman</b>/Insomnia request to the same URL, a browser tab, or the panel's own <b>Run scenario</b> button. The request <b>hanging is the success signal</b> — it's paused at your breakpoint and the call map + inspector fill in. Continue in the panel to finish it. Other routes to try: <code>/orders/A1/recursive</code> (recursion as a ↻&nbsp;×N node), <code>/orders/A2/loop</code> (empty items, total&nbsp;0), <code>/orders/ZZZ/loop</code> (404, no pause).</li>
+      <li><b>The payoff — let the AI agent run the whole test for you.</b> This is what Tracegrab is <i>for</i>. With the session running and MCP wired (steps&nbsp;2–3), you don't touch the gutter or <code>curl</code> at all. Tell the agent in chat: <i>"Set a breakpoint at the recursion line in <code>server.js</code>, call <code>/orders/A1/recursive</code>, then show me the call map and the paused variables."</i> It sets the breakpoint, fires the request, pauses, reads the live scope, steps, and reports the diagnosis back — <b>driving the same session you're watching</b>, so the pauses light up in your panel in real time. It auto-takes-over the child session that actually pauses, so there's no manual session switch. If instead the agent reports NOT RUNNING, the session wasn't started via step&nbsp;3's command, or MCP's <code>FLOW_WORKSPACE</code> points at a different folder than the one you opened — the two must be the same repo.</li>
     </ol>
 
     <p class="tag-line" style="margin-top:30px">// if something's off (the exact traps we hit)</p>
     <ol class="steps">
-      <li><b>Panel says "running" but the agent says NOT RUNNING.</b> The server was started the wrong way (terminal, auto-attach, or <b>Tracegrab: Start</b>). Stop it and relaunch via <b>Start Debugging (launch + panel)</b>.</li>
+      <li><b>The agent says the tool doesn't exist / can't call <code>get_debug_status</code>.</b> MCP isn't wired. Add the <code>mcpServers</code> block (install step&nbsp;2) pointing at <code>mcp/flow-mcp.mjs</code> with an absolute path, then reload your editor so it respawns the server. Without this the agent has no tools and cannot drive anything.</li>
+      <li><b>Panel says "running" but the agent says NOT RUNNING.</b> Either the server was started the wrong way (terminal, auto-attach, or <b>Tracegrab: Start</b>) — relaunch via <b>Start Debugging (launch + panel)</b> — or MCP's <code>FLOW_WORKSPACE</code> points at a different folder than the one open in the editor. Both sides must be the same repo.</li>
       <li><b>Port already in use (EADDRINUSE).</b> An old process is holding <code>3000</code> (or <code>3001</code> for Python). Stop it first.</li>
       <li><b>The request returns immediately instead of hanging.</b> No breakpoint is set, or it's on a line that didn't run (e.g. a 404 path). Set one on a line that executes.</li>
       <li><b>Python panel stays empty.</b> <code>debugpy</code> isn't in the interpreter the config launched — install it in that exact environment, or point the config at your <code>.venv</code>.</li>

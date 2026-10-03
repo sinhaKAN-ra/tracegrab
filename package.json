@@ -3,7 +3,7 @@
   "publisher": "TraceGrab-KaranSinha",
   "displayName": "Tracegrab",
   "description": "Prove AI-changed code still behaves correctly at runtime. Drive handlers with sequenced API calls, trace the real data flow, diff behavior against a baseline, and gate the change on it.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "icon": "media/brand/icon-128.png",
   "repository": {
     "type": "git",
