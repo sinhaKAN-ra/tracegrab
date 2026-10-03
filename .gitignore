@@ -34,13 +34,8 @@ docs/screenshots/*.png
 *.pem
 *.key
 
-# Private org layer — must NEVER be committed into the public repo.
-# The org layer lives in the separate private `tracegrab-org` repository.
-/org/
-/tracegrab-org/
-*.license.private.json
+# Local/private artifacts — not part of the public source
+/private/
+/examples/
 
-# Internal design/planning artifacts — live in the private tracegrab-org repo, never public.
-/docs/mockups/
-/docs/UX_PRODUCT_PLAN.md
-/docs/SCREENSHOTS.md
+
